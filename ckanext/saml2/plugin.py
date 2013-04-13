@@ -60,6 +60,9 @@ class Saml2Plugin(p.SingletonPlugin):
                 for field in config.USER_MAPPING:
                     value = saml_info.get(config.USER_MAPPING[field])
                     if value:
+                        # If list get first value
+                        if isinstance(value, list):
+                            value = value[0]
                         data_dict[field] = value
                 user = p.toolkit.get_action('user_create')(None, data_dict)
                 c.userobj = model.User.get(c.user)
