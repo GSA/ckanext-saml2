@@ -39,7 +39,11 @@ class Saml2Plugin(p.SingletonPlugin):
             # we need to get the actual user info from the saml2auth client
             if not self.saml_identify:
                 plugins = p.toolkit.request.environ['repoze.who.plugins']
-                saml_client = plugins['saml2auth'].saml_client
+                saml_plugin = plugins.get('saml2auth')
+                if not saml_plugin:
+                    # saml2 repoze plugin not set up
+                    return
+                saml_client = saml_plugin.saml_client
                 self.saml_identify = saml_client.users.get_identity
             saml_info = self.saml_identify(user)[0]
 
