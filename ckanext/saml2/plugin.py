@@ -12,10 +12,37 @@ import config.sp_config as config
 
 log = logging.getLogger('ckanext.saml2')
 
+
+def _no_permissions(context, msg):
+    user = context['user']
+    return {'success': False, 'msg': msg.format(user=user)}
+
+
+def user_create(context, data_dict):
+    msg = p.toolkit._('Users cannot be created.')
+    return _no_permissions(context, msg)
+
+
+def user_update(context, data_dict):
+    msg = p.toolkit._('Users cannot be edited.')
+    return _no_permissions(context, msg)
+
+
+def user_reset(context, data_dict):
+    msg = p.toolkit._('Users cannot reset passwords.')
+    return _no_permissions(context, msg)
+
+
+def request_reset(context, data_dict):
+    msg = p.toolkit._('Users cannot reset passwords.')
+    return _no_permissions(context, msg)
+
+
 class Saml2Plugin(p.SingletonPlugin):
 
     p.implements(p.IAuthenticator, inherit=True)
     p.implements(p.IRoutes, inherit=True)
+    p.implements(p.IAuthFunctions, inherit=True)
 
     saml_identify = None
 
@@ -106,6 +133,16 @@ class Saml2Plugin(p.SingletonPlugin):
             and p.toolkit.request.environ['PATH_INFO'] != '/user/login'):
                 h.redirect_to('saml2_unauthorized')
         return (status_code, detail, headers, comment)
+
+    def get_auth_functions(self):
+        # we need to prevent some actions being authorized.
+        return {
+            'user_create': user_create,
+            'user_update': user_update,
+            'user_reset': user_reset,
+            'request_reset': request_reset,
+        }
+
 
 class Saml2Controller(base.BaseController):
 
