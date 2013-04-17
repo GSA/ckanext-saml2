@@ -79,6 +79,8 @@ class Saml2Plugin(p.SingletonPlugin):
                 base.response.delete_cookie('auth_tkt')
                 h.redirect_to(controller='user', action='logged_out')
 
+            log.critical('SAML DATA')
+            log.critical(saml_info)
             c.user = saml_info['uid'][0]
             c.userobj = model.User.get(c.user)
             if c.userobj is None:
@@ -88,16 +90,49 @@ class Saml2Plugin(p.SingletonPlugin):
                     'password': 'password',
                     'email': 'a@b.c',
                 }
-                for field in config.USER_MAPPING:
-                    value = saml_info.get(config.USER_MAPPING[field])
-                    if value:
-                        # If list get first value
-                        if isinstance(value, list):
-                            value = value[0]
-                        data_dict[field] = value
+                self.update_data_dict(data_dict, config.USER_MAPPING, saml_info)
                 user = p.toolkit.get_action('user_create')(None, data_dict)
                 c.userobj = model.User.get(c.user)
 
+            org = model.Group.get(saml_info['field_unique_id'][0])
+
+            if not org:
+                context = {'ignore_auth': True}
+                site_user = p.toolkit.get_action('get_site_user')(context, {})
+                context = {'user': site_user['name']}
+                data_dict = {
+                }
+                self.update_data_dict(data_dict, config.ORGANIZATION_MAPPING, saml_info)
+                org = p.toolkit.get_action('organization_create')(context, data_dict)
+                log.critical('ORG')
+                log.critical(org)
+
+                member_dict = {
+                    'id': org['id'],
+                    'object': c.userobj.id,
+                    'object_type': 'user',
+                    'capacity': 'member',
+                }
+                member_create_context = {
+                    'user': site_user['name'],
+                    'ignore_auth': True,
+                }
+                p.toolkit.get_action('member_create')(member_create_context, member_dict)
+
+
+    def update_data_dict(self, data_dict, mapping, saml_info):
+        for field in mapping:
+            value = saml_info.get(mapping[field])
+            if value:
+                # If list get first value
+                if isinstance(value, list):
+                    value = value[0]
+                if field.startswith('extras:'):
+                    data_dict[field] = value
+                else:
+                    if 'extras' not in data_dict:
+                        data_dict['extras'] = []
+                    data_dict['extras'].append(dict(key=field[7:], value=value))
 
     def login(self):
         # We can be here either because we are requesting a login (no user)
