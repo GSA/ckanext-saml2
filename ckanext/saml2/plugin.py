@@ -124,7 +124,7 @@ class Saml2Plugin(p.SingletonPlugin):
                 log.critical('MEMBER')
                 log.critical(member_dict)
                 log.critical(member_create_context)
-                #p.toolkit.get_action('member_create')(member_create_context, member_dict)
+                p.toolkit.get_action('member_create')(member_create_context, member_dict)
 
 
     def update_data_dict(self, data_dict, mapping, saml_info):
