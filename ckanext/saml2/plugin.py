@@ -7,7 +7,7 @@ import ckan.lib.base as base
 import ckan.lib.helpers as h
 import ckan.model as model
 
-import config.sp_config as config
+import ckanext.geodatagov.saml2.sp_config as config
 
 
 log = logging.getLogger('ckanext.saml2')
@@ -79,6 +79,8 @@ class Saml2Plugin(p.SingletonPlugin):
                 base.response.delete_cookie('auth_tkt')
                 h.redirect_to(controller='user', action='logged_out')
 
+            log.critical('SAML CONFIG')
+            log.critical(config)
             log.critical('SAML DATA')
             log.critical(saml_info)
             c.user = saml_info['uid'][0]
