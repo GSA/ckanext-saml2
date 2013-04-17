@@ -111,6 +111,7 @@ class Saml2Plugin(p.SingletonPlugin):
                 log.critical('ORG')
                 log.critical(org)
 
+            if True:
                 member_dict = {
                     'id': org['id'],
                     'object': c.userobj.id,
@@ -121,7 +122,11 @@ class Saml2Plugin(p.SingletonPlugin):
                     'user': site_user['name'],
                     'ignore_auth': True,
                 }
-                p.toolkit.get_action('member_create')(member_create_context, member_dict)
+
+                log.critical('MEMBER')
+                log.critical(member_dict)
+                log.critical(member_create_context)
+                #p.toolkit.get_action('member_create')(member_create_context, member_dict)
 
 
     def update_data_dict(self, data_dict, mapping, saml_info):
