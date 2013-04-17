@@ -131,7 +131,7 @@ class Saml2Plugin(p.SingletonPlugin):
                 # If list get first value
                 if isinstance(value, list):
                     value = value[0]
-                if field.startswith('extras:'):
+                if not field.startswith('extras:'):
                     data_dict[field] = value
                 else:
                     if 'extras' not in data_dict:
