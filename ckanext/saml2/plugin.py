@@ -105,15 +105,13 @@ class Saml2Plugin(p.SingletonPlugin):
                 data_dict = {
                 }
                 self.update_data_dict(data_dict, config.ORGANIZATION_MAPPING, saml_info)
-                log.critical('data_dict')
-                log.critical(data_dict)
                 org = p.toolkit.get_action('organization_create')(context, data_dict)
-                log.critical('ORG')
-                log.critical(org)
+
+                org = model.Group.get(saml_info['field_unique_id'][0])
 
             if True:
                 member_dict = {
-                    'id': org['id'],
+                    'id': org.id,
                     'object': c.userobj.id,
                     'object_type': 'user',
                     'capacity': 'member',
