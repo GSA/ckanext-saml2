@@ -97,10 +97,10 @@ class Saml2Plugin(p.SingletonPlugin):
                 c.userobj = model.User.get(c.user)
 
             org = model.Group.get(saml_info['field_unique_id'][0])
+            context = {'ignore_auth': True}
+            site_user = p.toolkit.get_action('get_site_user')(context, {})
 
             if not org:
-                context = {'ignore_auth': True}
-                site_user = p.toolkit.get_action('get_site_user')(context, {})
                 context = {'user': site_user['name']}
                 data_dict = {
                 }
