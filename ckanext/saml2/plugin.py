@@ -76,8 +76,9 @@ class Saml2Plugin(p.SingletonPlugin):
 
             # If we are here but no info then we need to clean up
             if not saml_info:
-                base.response.delete_cookie('auth_tkt')
-                base.response.delete_cookie('auth_tkt')
+              #  base.response.delete_cookie('auth_tkt')
+              #  base.response.delete_cookie('auth_tkt')
+                base.response.cookies = []
                 h.redirect_to(controller='user', action='logged_out')
 
             c.user = saml_info['uid'][0]
