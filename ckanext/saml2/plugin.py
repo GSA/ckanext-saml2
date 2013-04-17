@@ -105,6 +105,8 @@ class Saml2Plugin(p.SingletonPlugin):
                 data_dict = {
                 }
                 self.update_data_dict(data_dict, config.ORGANIZATION_MAPPING, saml_info)
+                log.critical('data_dict')
+                log.critical(data_dict)
                 org = p.toolkit.get_action('organization_create')(context, data_dict)
                 log.critical('ORG')
                 log.critical(org)
