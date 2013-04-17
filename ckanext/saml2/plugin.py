@@ -77,12 +77,9 @@ class Saml2Plugin(p.SingletonPlugin):
             # If we are here but no info then we need to clean up
             if not saml_info:
                 base.response.delete_cookie('auth_tkt')
+                base.response.delete_cookie('auth_tkt')
                 h.redirect_to(controller='user', action='logged_out')
 
-            log.critical('SAML CONFIG')
-            log.critical(config)
-            log.critical('SAML DATA')
-            log.critical(saml_info)
             c.user = saml_info['uid'][0]
             c.userobj = model.User.get(c.user)
             if c.userobj is None:
@@ -96,35 +93,38 @@ class Saml2Plugin(p.SingletonPlugin):
                 user = p.toolkit.get_action('user_create')(None, data_dict)
                 c.userobj = model.User.get(c.user)
 
-            org = model.Group.get(saml_info['field_unique_id'][0])
-            context = {'ignore_auth': True}
-            site_user = p.toolkit.get_action('get_site_user')(context, {})
+                if config.ORGANIZATION_MAPPING['name'] in saml_info:
+                    self.create_organization(saml_info)
 
-            if not org:
-                context = {'user': site_user['name']}
-                data_dict = {
-                }
-                self.update_data_dict(data_dict, config.ORGANIZATION_MAPPING, saml_info)
-                org = p.toolkit.get_action('organization_create')(context, data_dict)
+    def create_organization(self, saml_info):
+        org_name = config.ORGANIZATION_MAPPING['name'][0]
+        org = model.Group.get(org_name)
 
-                org = model.Group.get(saml_info['field_unique_id'][0])
+        context = {'ignore_auth': True}
+        site_user = p.toolkit.get_action('get_site_user')(context, {})
+        c = p.toolkit.c
 
-            if True:
-                member_dict = {
-                    'id': org.id,
-                    'object': c.userobj.id,
-                    'object_type': 'user',
-                    'capacity': 'member',
-                }
-                member_create_context = {
-                    'user': site_user['name'],
-                    'ignore_auth': True,
-                }
+        if not org:
+            context = {'user': site_user['name']}
+            data_dict = {
+            }
+            self.update_data_dict(data_dict, config.ORGANIZATION_MAPPING, saml_info)
+            org = p.toolkit.get_action('organization_create')(context, data_dict)
+            org = model.Group.get(org_name)
 
-                log.critical('MEMBER')
-                log.critical(member_dict)
-                log.critical(member_create_context)
-                p.toolkit.get_action('member_create')(member_create_context, member_dict)
+        # add membership
+        member_dict = {
+            'id': org.id,
+            'object': c.userobj.id,
+            'object_type': 'user',
+            'capacity': 'member',
+        }
+        member_create_context = {
+            'user': site_user['name'],
+            'ignore_auth': True,
+        }
+
+        p.toolkit.get_action('member_create')(member_create_context, member_dict)
 
 
     def update_data_dict(self, data_dict, mapping, saml_info):
