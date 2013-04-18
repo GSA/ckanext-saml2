@@ -44,7 +44,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
     saml_identify = None
     config_module = None
-    rememberer = None
+    rememberer_name = None
 
     @property
     def config(self):
@@ -180,14 +180,14 @@ class Saml2Plugin(p.SingletonPlugin):
             h.redirect_to(controller='user', action='logged_out')
 
     def delete_cookies(self):
-        if self.rememberer is None:
+        if self.rememberer_name is None:
             plugins = p.toolkit.request.environ['repoze.who.plugins']
             saml_plugin = plugins.get('saml2auth')
-            self.rememberer = saml_plugin.rememberer
-        base.response.delete_cookie(self.rememberer)
+            self.rememberer_name = saml_plugin.rememberer_name
+        base.response.delete_cookie(self.rememberer_name)
         # We seem to end up with an extra cookie so kill this too
         domain = p.toolkit.request.environ['HTTP_HOST']
-        base.response.delete_cookie(self.rememberer, domain='.' + domain)
+        base.response.delete_cookie(self.rememberer_name, domain='.' + domain)
 
     def abort(self, status_code, detail, headers, comment):
         # HTTP Status 401 causes a login redirect.  We need to prevent this
