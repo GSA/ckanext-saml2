@@ -20,6 +20,7 @@ setup(
 	zip_safe=False,
 	install_requires=[
 		# -*- Extra requirements: -*-
+        'python-memcached==1.48',
 	],
 	entry_points=\
 	"""
