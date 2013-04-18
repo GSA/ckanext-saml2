@@ -7,8 +7,6 @@ import ckan.lib.base as base
 import ckan.lib.helpers as h
 import ckan.model as model
 
-import ckanext.geodatagov.saml2.sp_config as config
-
 
 log = logging.getLogger('ckanext.saml2')
 
@@ -45,6 +43,20 @@ class Saml2Plugin(p.SingletonPlugin):
     p.implements(p.IAuthFunctions, inherit=True)
 
     saml_identify = None
+    config_module = None
+    rememberer = None
+
+    @property
+    def config(self):
+        if not self.config_module is None:
+            plugins = p.toolkit.request.environ['repoze.who.plugins']
+            saml_plugin = plugins.get('saml2auth')
+            if not saml_plugin:
+                # saml2 repoze plugin not set up
+                return
+            self.config_module = __import__(saml_plugin.saml_conf)
+        return self.config_module
+
 
     def before_map(self, map):
         map.connect(
@@ -76,9 +88,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
             # If we are here but no info then we need to clean up
             if not saml_info:
-              #  base.response.delete_cookie('auth_tkt')
-              #  base.response.delete_cookie('auth_tkt')
-                base.response.cookies = []
+                self.delete_cookies()
                 h.redirect_to(controller='user', action='logged_out')
 
             c.user = saml_info['uid'][0]
@@ -90,15 +100,15 @@ class Saml2Plugin(p.SingletonPlugin):
                     'password': 'password',
                     'email': 'a@b.c',
                 }
-                self.update_data_dict(data_dict, config.USER_MAPPING, saml_info)
+                self.update_data_dict(data_dict, self.config.USER_MAPPING, saml_info)
                 user = p.toolkit.get_action('user_create')(None, data_dict)
                 c.userobj = model.User.get(c.user)
 
-                if config.ORGANIZATION_MAPPING['name'] in saml_info:
+                if self.config.ORGANIZATION_MAPPING['name'] in saml_info:
                     self.create_organization(saml_info)
 
     def create_organization(self, saml_info):
-        org_name = config.ORGANIZATION_MAPPING['name'][0]
+        org_name = self.config.ORGANIZATION_MAPPING['name'][0]
         org = model.Group.get(org_name)
 
         context = {'ignore_auth': True}
@@ -109,7 +119,7 @@ class Saml2Plugin(p.SingletonPlugin):
             context = {'user': site_user['name']}
             data_dict = {
             }
-            self.update_data_dict(data_dict, config.ORGANIZATION_MAPPING, saml_info)
+            self.update_data_dict(data_dict, self.config.ORGANIZATION_MAPPING, saml_info)
             org = p.toolkit.get_action('organization_create')(context, data_dict)
             org = model.Group.get(org_name)
 
@@ -166,8 +176,18 @@ class Saml2Plugin(p.SingletonPlugin):
                 pass
 
         if not sids:
-            base.response.delete_cookie('auth_tkt')
+            self.delete_cookies()
             h.redirect_to(controller='user', action='logged_out')
+
+    def delete_cookies(self):
+        if self.rememberer is None:
+            plugins = p.toolkit.request.environ['repoze.who.plugins']
+            saml_plugin = plugins.get('saml2auth')
+            self.rememberer = saml_plugin.rememberer
+        base.response.delete_cookie(self.rememberer)
+        # We seem to end up with an extra cookie so kill this too
+        domain = p.toolkit.request.environ['HTTP_HOST']
+        base.response.delete_cookie(self.rememberer, domain='.' + domain)
 
     def abort(self, status_code, detail, headers, comment):
         # HTTP Status 401 causes a login redirect.  We need to prevent this
