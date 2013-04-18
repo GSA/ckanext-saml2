@@ -4,6 +4,7 @@ from saml2 import BINDING_HTTP_REDIRECT
 
 import ckan.plugins as p
 import ckan.lib.base as base
+import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
 
@@ -16,21 +17,25 @@ def _no_permissions(context, msg):
     return {'success': False, 'msg': msg.format(user=user)}
 
 
+@logic.auth_sysadmins_check
 def user_create(context, data_dict):
     msg = p.toolkit._('Users cannot be created.')
     return _no_permissions(context, msg)
 
 
+@logic.auth_sysadmins_check
 def user_update(context, data_dict):
     msg = p.toolkit._('Users cannot be edited.')
     return _no_permissions(context, msg)
 
 
+@logic.auth_sysadmins_check
 def user_reset(context, data_dict):
     msg = p.toolkit._('Users cannot reset passwords.')
     return _no_permissions(context, msg)
 
 
+@logic.auth_sysadmins_check
 def request_reset(context, data_dict):
     msg = p.toolkit._('Users cannot reset passwords.')
     return _no_permissions(context, msg)
