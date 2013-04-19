@@ -75,17 +75,17 @@ class Saml2Plugin(p.SingletonPlugin):
         )
         return map
 
+    def make_password(self):
+        # create a hard to guess password
+        out = ''
+        for n in xrange(8):
+            out += str(uuid.uuid4())
+        return out
+
     def identify(self):
         ''' This does work around saml2 authorization.
         c.user contains the saml2 id of the logged in user we need to
         convert this to represent the ckan user. '''
-
-        def password():
-            # create a hard to guess password
-            out = ''
-            for n in xrange(8):
-                out += str(uuid.uuid4())
-            return out
 
         # Can we find the user?
         c = p.toolkit.c
@@ -113,7 +113,7 @@ class Saml2Plugin(p.SingletonPlugin):
                 # Create the user
                 data_dict = {
                     'name': c.user,
-                    'password': password(),
+                    'password': self.make_password(),
                     'email': 'a@b.c',
                 }
                 self.update_data_dict(data_dict, self.user_mapping, saml_info)
@@ -125,7 +125,7 @@ class Saml2Plugin(p.SingletonPlugin):
                     self.create_organization(saml_info)
 
     def create_organization(self, saml_info):
-        org_name = self.organization_mapping['name'][0]
+        org_name = saml_info[self.organization_mapping['name']][0]
         org = model.Group.get(org_name)
 
         context = {'ignore_auth': True}
