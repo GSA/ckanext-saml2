@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from saml2 import BINDING_HTTP_REDIRECT
 
@@ -46,22 +47,24 @@ class Saml2Plugin(p.SingletonPlugin):
     p.implements(p.IAuthenticator, inherit=True)
     p.implements(p.IRoutes, inherit=True)
     p.implements(p.IAuthFunctions, inherit=True)
+    p.implements(p.IConfigurable)
+
 
     saml_identify = None
-    config_module = None
     rememberer_name = None
 
-    @property
-    def config(self):
-        if not self.config_module is None:
-            plugins = p.toolkit.request.environ['repoze.who.plugins']
-            saml_plugin = plugins.get('saml2auth')
-            if not saml_plugin:
-                # saml2 repoze plugin not set up
-                return
-            self.config_module = __import__(saml_plugin.saml_conf)
-        return self.config_module
+    def make_mapping(self, key, config):
+        data = config.get(key)
+        mapping = {}
+        for item in data.split():
+            bits = item.split('~')
+            mapping[bits[0]] = bits[1]
+        return mapping
 
+    def configure(self, config):
+        self.user_mapping = self.make_mapping('saml2.user_mapping', config)
+        m = self.make_mapping('saml2.organization_mapping', config)
+        self.organization_mapping = m
 
     def before_map(self, map):
         map.connect(
@@ -76,6 +79,14 @@ class Saml2Plugin(p.SingletonPlugin):
         ''' This does work around saml2 authorization.
         c.user contains the saml2 id of the logged in user we need to
         convert this to represent the ckan user. '''
+
+        def password():
+            # create a hard to guess password
+            out = ''
+            for n in xrange(8):
+                out += str(uuid.uuid4())
+            return out
+
         # Can we find the user?
         c = p.toolkit.c
         user = p.toolkit.request.environ.get('REMOTE_USER', '')
@@ -102,18 +113,19 @@ class Saml2Plugin(p.SingletonPlugin):
                 # Create the user
                 data_dict = {
                     'name': c.user,
-                    'password': 'password',
+                    'password': password(),
                     'email': 'a@b.c',
                 }
-                self.update_data_dict(data_dict, self.config.USER_MAPPING, saml_info)
-                user = p.toolkit.get_action('user_create')(None, data_dict)
+                self.update_data_dict(data_dict, self.user_mapping, saml_info)
+                context = {'ignore_auth': True}
+                user = p.toolkit.get_action('user_create')(context, data_dict)
                 c.userobj = model.User.get(c.user)
 
-                if self.config.ORGANIZATION_MAPPING['name'] in saml_info:
+                if self.organization_mapping['name'] in saml_info:
                     self.create_organization(saml_info)
 
     def create_organization(self, saml_info):
-        org_name = self.config.ORGANIZATION_MAPPING['name'][0]
+        org_name = self.organization_mapping['name'][0]
         org = model.Group.get(org_name)
 
         context = {'ignore_auth': True}
@@ -124,7 +136,7 @@ class Saml2Plugin(p.SingletonPlugin):
             context = {'user': site_user['name']}
             data_dict = {
             }
-            self.update_data_dict(data_dict, self.config.ORGANIZATION_MAPPING, saml_info)
+            self.update_data_dict(data_dict, self.organization_mapping, saml_info)
             org = p.toolkit.get_action('organization_create')(context, data_dict)
             org = model.Group.get(org_name)
 
