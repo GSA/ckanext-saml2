@@ -8,7 +8,7 @@ import ckan.lib.base as base
 import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
-
+import ckan.logic.schema as schema
 
 log = logging.getLogger('ckanext.saml2')
 
@@ -89,11 +89,12 @@ class Saml2Plugin(p.SingletonPlugin):
 
         # Can we find the user?
         c = p.toolkit.c
-        user = p.toolkit.request.environ.get('REMOTE_USER', '')
+        environ = p.toolkit.request.environ
+        user = environ.get('REMOTE_USER', '')
         if user:
             # we need to get the actual user info from the saml2auth client
             if not self.saml_identify:
-                plugins = p.toolkit.request.environ['repoze.who.plugins']
+                plugins = environ['repoze.who.plugins']
                 saml_plugin = plugins.get('saml2auth')
                 if not saml_plugin:
                     # saml2 repoze plugin not set up
@@ -109,18 +110,25 @@ class Saml2Plugin(p.SingletonPlugin):
 
             c.user = saml_info['uid'][0]
             c.userobj = model.User.get(c.user)
+
             if c.userobj is None:
                 # Create the user
                 data_dict = {
-                    'name': c.user,
                     'password': self.make_password(),
-                    'email': 'a@b.c',
                 }
                 self.update_data_dict(data_dict, self.user_mapping, saml_info)
-                context = {'ignore_auth': True}
+                # Update the user schema to allow user creation
+                user_schema = schema.default_user_schema()
+                user_schema['id'] = [p.toolkit.get_validator('not_empty')]
+                user_schema['name'] = [p.toolkit.get_validator('not_empty')]
+
+                context = {'schema' : user_schema, 'ignore_auth': True}
                 user = p.toolkit.get_action('user_create')(context, data_dict)
                 c.userobj = model.User.get(c.user)
 
+            # check if this is the first time we are authorized
+            # If so check the users org is done
+            if 'user' in environ.get('repoze.who.identity',{}):
                 if self.organization_mapping['name'] in saml_info:
                     self.create_organization(saml_info)
 
@@ -140,19 +148,27 @@ class Saml2Plugin(p.SingletonPlugin):
             org = p.toolkit.get_action('organization_create')(context, data_dict)
             org = model.Group.get(org_name)
 
-        # add membership
-        member_dict = {
+        # check if we are a member of the organization
+        data_dict = {
             'id': org.id,
-            'object': c.userobj.id,
-            'object_type': 'user',
-            'capacity': 'member',
+            'type': 'user',
         }
-        member_create_context = {
-            'user': site_user['name'],
-            'ignore_auth': True,
-        }
+        members = p.toolkit.get_action('member_list')(context, data_dict)
+        members = [member[0] for member in members]
+        if c.userobj.id not in members:
+            # add membership
+            member_dict = {
+                'id': org.id,
+                'object': c.userobj.id,
+                'object_type': 'user',
+                'capacity': 'member',
+            }
+            member_create_context = {
+                'user': site_user['name'],
+                'ignore_auth': True,
+            }
 
-        p.toolkit.get_action('member_create')(member_create_context, member_dict)
+            p.toolkit.get_action('member_create')(member_create_context, member_dict)
 
 
     def update_data_dict(self, data_dict, mapping, saml_info):
