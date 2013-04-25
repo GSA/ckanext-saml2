@@ -84,6 +84,12 @@ class Saml2Plugin(p.SingletonPlugin):
             controller='ckanext.saml2.plugin:Saml2Controller',
             action='saml2_unauthorized'
         )
+        map.connect(
+            'saml2_slo',
+            '/slo',
+            controller='ckanext.saml2.plugin:Saml2Controller',
+            action='slo'
+        )
         return map
 
     def make_password(self):
