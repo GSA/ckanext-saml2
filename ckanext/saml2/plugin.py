@@ -41,6 +41,18 @@ def request_reset(context, data_dict):
     msg = p.toolkit._('Users cannot reset passwords.')
     return _no_permissions(context, msg)
 
+rememberer_name = None
+
+def delete_cookies():
+    global rememberer_name
+    if rememberer_name is None:
+        plugins = p.toolkit.request.environ['repoze.who.plugins']
+        saml_plugin = plugins.get('saml2auth')
+        rememberer_name = saml_plugin.rememberer_name
+    base.response.delete_cookie(rememberer_name)
+    # We seem to end up with an extra cookie so kill this too
+    domain = p.toolkit.request.environ['HTTP_HOST']
+    base.response.delete_cookie(rememberer_name, domain='.' + domain)
 
 class Saml2Plugin(p.SingletonPlugin):
 
@@ -51,7 +63,6 @@ class Saml2Plugin(p.SingletonPlugin):
 
 
     saml_identify = None
-    rememberer_name = None
 
     def make_mapping(self, key, config):
         data = config.get(key)
@@ -105,7 +116,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
             # If we are here but no info then we need to clean up
             if not saml_info:
-                self.delete_cookies()
+                delete_cookies()
                 h.redirect_to(controller='user', action='logged_out')
 
             c.user = saml_info['uid'][0]
@@ -209,18 +220,8 @@ class Saml2Plugin(p.SingletonPlugin):
                 pass
 
         if not sids:
-            self.delete_cookies()
+            delete_cookies()
             h.redirect_to(controller='user', action='logged_out')
-
-    def delete_cookies(self):
-        if self.rememberer_name is None:
-            plugins = p.toolkit.request.environ['repoze.who.plugins']
-            saml_plugin = plugins.get('saml2auth')
-            self.rememberer_name = saml_plugin.rememberer_name
-        base.response.delete_cookie(self.rememberer_name)
-        # We seem to end up with an extra cookie so kill this too
-        domain = p.toolkit.request.environ['HTTP_HOST']
-        base.response.delete_cookie(self.rememberer_name, domain='.' + domain)
 
     def abort(self, status_code, detail, headers, comment):
         # HTTP Status 401 causes a login redirect.  We need to prevent this
@@ -248,3 +249,22 @@ class Saml2Controller(base.BaseController):
         c.code = 401
         c.content = p.toolkit._('You are not authorized to do this')
         return p.toolkit.render('error_document_template.html')
+
+    def slo(self):
+        environ = p.toolkit.request.environ
+        # so here I might get either a LogoutResponse or a LogoutRequest
+        client = environ['repoze.who.plugins']['saml2auth']
+        sids = None
+        if 'QUERY_STRING' in environ:
+            try:
+                res = client.saml_client.logout_request_response(
+                    p.toolkit.request.GET['SAMLResponse'][0],
+                    binding=BINDING_HTTP_REDIRECT
+                )
+            except KeyError:
+                # return error reply
+                pass
+
+        if not sids:
+            delete_cookies()
+            h.redirect_to(controller='user', action='logged_out')
