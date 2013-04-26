@@ -118,7 +118,11 @@ class Saml2Plugin(p.SingletonPlugin):
                     return
                 saml_client = saml_plugin.saml_client
                 self.saml_identify = saml_client.users.get_identity
-            saml_info = self.saml_identify(user)[0]
+            try:
+                saml_info = self.saml_identify(user)[0]
+            except KeyError:
+                # we don't know the user stale cookies
+                saml_info = None
 
             # If we are here but no info then we need to clean up
             if not saml_info:
