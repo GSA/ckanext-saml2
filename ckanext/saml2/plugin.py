@@ -212,48 +212,14 @@ class Saml2Plugin(p.SingletonPlugin):
 
 
     def logout(self):
-        # This is where it starts when a user wants to log out
         environ = p.toolkit.request.environ
-        subject_id = environ.get('REMOTE_USER', '')
-    #    subject_id = environ["repoze.who.identity"]['repoze.who.userid']
-      #  logger.info("[logout] subject_id: '%s'" % (subject_id,))
-     ##   target = "/done"
-
-        # What if more than one
+        subject_id = environ["repoze.who.identity"]['repoze.who.userid']
         client = environ['repoze.who.plugins']["saml2auth"]
-        _dict = client.saml_client.global_logout(subject_id)
-       # logger.info("[logout] global_logout > %s" % (_dict,))
+        saml_logout = client.saml_client.global_logout(subject_id)
         rem = environ['repoze.who.plugins'][client.rememberer_name]
         rem.forget(environ, subject_id)
-
-        for key, item in _dict.items():
-            if isinstance(item, tuple):
-                binding, htargs = item
-            else: # result from logout, should be OK
-                pass
-
-        h.redirect_to(controller='user', action='logged_out')
-      ##  resp = Redirect("Successful Logout", headers=[("Location", target)])
-      ##  return resp(environ, start_response)
-
-
-
-    ##    environ = p.toolkit.request.environ
-    ##    # so here I might get either a LogoutResponse or a LogoutRequest
-    ##    client = environ['repoze.who.plugins']['saml2auth']
-    ##    sids = None
-    ##    if 'QUERY_STRING' in environ:
-    ##        try:
-    ##            client.saml_client.logout_request_response(
-    ##                p.toolkit.request.GET['SAMLResponse'][0],
-    ##                binding=BINDING_HTTP_REDIRECT)
-    ##        except KeyError:
-    ##            # return error reply
-    ##            pass
-
-    ##    if not sids:
-    ##        delete_cookies()
-    ##        h.redirect_to(controller='user', action='logged_out')
+        # do the redirect the url is in the saml_logout
+        h.redirect_to(saml_logout[2][0][1])
 
     def abort(self, status_code, detail, headers, comment):
         # HTTP Status 401 causes a login redirect.  We need to prevent this
@@ -286,17 +252,25 @@ class Saml2Controller(base.BaseController):
         environ = p.toolkit.request.environ
         # so here I might get either a LogoutResponse or a LogoutRequest
         client = environ['repoze.who.plugins']['saml2auth']
-        sids = None
         if 'QUERY_STRING' in environ:
+            saml_resp = p.toolkit.request.GET.get('SAMLResponse')
+            # fix the cert so that it is on multiple lines
+            out = []
+            # if on multiple lines make it a single one
+            line = ''.join(saml_resp.split('\n'))
+            while len(line) > 64:
+                out.append(line[:64])
+                line = line[64:]
+            out.append(line)
+            saml_resp = '\n'.join(out)
             try:
                 res = client.saml_client.logout_request_response(
-                    p.toolkit.request.GET['SAMLResponse'][0],
+                    saml_resp,
                     binding=BINDING_HTTP_REDIRECT
                 )
             except KeyError:
                 # return error reply
                 pass
 
-        if not sids:
-            delete_cookies()
-            h.redirect_to(controller='user', action='logged_out')
+        delete_cookies()
+        h.redirect_to(controller='user', action='logged_out')
