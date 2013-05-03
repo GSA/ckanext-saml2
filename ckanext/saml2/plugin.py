@@ -265,24 +265,24 @@ class Saml2Controller(base.BaseController):
                 subject_id = environ["repoze.who.identity"]['repoze.who.userid']
                 headers, success = client.saml_client.do_http_redirect_logout(get, subject_id)
                 h.redirect_to(headers[0][1])
-            if saml_resp:
-                # fix the cert so that it is on multiple lines
-                out = []
-                # if on multiple lines make it a single one
-                line = ''.join(saml_resp.split('\n'))
-                while len(line) > 64:
-                    out.append(line[:64])
-                    line = line[64:]
-                out.append(line)
-                saml_resp = '\n'.join(out)
-                try:
-                    res = client.saml_client.logout_request_response(
-                        saml_resp,
-                        binding=BINDING_HTTP_REDIRECT
-                    )
-                except KeyError:
-                    # return error reply
-                    pass
+            elif saml_resp:
+             ##   # fix the cert so that it is on multiple lines
+             ##   out = []
+             ##   # if on multiple lines make it a single one
+             ##   line = ''.join(saml_resp.split('\n'))
+             ##   while len(line) > 64:
+             ##       out.append(line[:64])
+             ##       line = line[64:]
+             ##   out.append(line)
+             ##   saml_resp = '\n'.join(out)
+             ##   try:
+             ##       res = client.saml_client.logout_request_response(
+             ##           saml_resp,
+             ##           binding=BINDING_HTTP_REDIRECT
+             ##       )
+             ##   except KeyError:
+             ##       # return error reply
+             ##       pass
 
                 delete_cookies()
                 h.redirect_to(controller='user', action='logged_out')
