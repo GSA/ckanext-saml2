@@ -129,7 +129,7 @@ class Saml2Plugin(p.SingletonPlugin):
                 delete_cookies()
                 h.redirect_to(controller='user', action='logged_out')
 
-            c.user = saml_info['uid'][0]
+            c.user = saml_info['name'][0]
             c.userobj = model.User.get(c.user)
 
             if c.userobj is None:
