@@ -182,7 +182,10 @@ class Saml2Plugin(p.SingletonPlugin):
                 'id': org.id,
                 'object': c.userobj.id,
                 'object_type': 'user',
-                'capacity': 'member',
+                'capacity': 'editor' \
+                    if saml_info.get['field_type_of_user'] \
+                    and saml_info.get['field_type_of_user'][0] == 'Publisher' \
+                    else 'member',
             }
             member_create_context = {
                 'user': site_user['name'],
