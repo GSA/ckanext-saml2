@@ -147,9 +147,9 @@ class Saml2Plugin(p.SingletonPlugin):
                 user = p.toolkit.get_action('user_create')(context, data_dict)
                 c.userobj = model.User.get(c.user)
 
-            # check if this is the first time we are authorized
-            # If so check the users org is done
-            if 'user' in environ.get('repoze.who.identity',{}):
+            # previous 'user' in repoze.who.identity check is broken.
+            # use referer check as an temp alternative.
+            if not environ.get('HTTP_REFERER'):
                 if self.organization_mapping['name'] in saml_info:
                     self.create_organization(saml_info)
 
