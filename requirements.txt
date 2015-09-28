@@ -1,0 +1,1 @@
+-e git+https://github.com/tobes/pysaml2.git@fixes#egg=pysaml2
