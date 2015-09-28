@@ -3,6 +3,9 @@ ckanext-saml2
 
 SAML2 Athentication extension
 
+#### Requirements:
+The following packages are required: memcached, repoze, m2crypto, xmlsec1, xmlsec1-openssl, swig 
+
 ####Setup Instructions:
 - To install this extension run the following commands (switch to python env first): then `pip install -r requirements.txt` & `/usr/lib/ckan/python setup.py develop` 
 - To enable the saml2 plugin added it to the `ckan.plugins` list in your ckan configuration file (i.e: `/etc/ckan/production.ini`)
