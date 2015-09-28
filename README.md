@@ -4,7 +4,7 @@ ckanext-saml2
 SAML2 Athentication extension
 
 ####Setup Instructions:
-- To install this extension run the following commands: then `pip install -r requirements.txt` & `/usr/lib/ckan/python setup.py develop` 
+- To install this extension run the following commands (switch to python env first): then `pip install -r requirements.txt` & `/usr/lib/ckan/python setup.py develop` 
 - To enable the saml2 plugin added it to the `ckan.plugins` list in your ckan configuration file (i.e: `/etc/ckan/production.ini`)
 - Modify `ckanext/saml2/config/sp_config.py` to suit your needs. The BASE variable at the top need reference  the domain of the service provider (i.e changed to http://catalog.data.gov or wherever CKAN is currently hosted).
 - Place your identity provider's `idp.xml` metadata here: `ckanext/saml2/config/`
