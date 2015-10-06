@@ -3,14 +3,10 @@ import os.path
 from saml2 import BINDING_HTTP_REDIRECT
 from saml2.saml import NAME_FORMAT_URI
 
+BASE= 'https://catalog.data.gov/'
 #BASE= 'https://saml-test.datagov.ckan.org/'
-BASE = 'http://localhost:5000/'
+#BASE = 'http://localhost:5000/'
 CONFIG_PATH = os.path.dirname(__file__)
-
-USER_MAPPING = {
-    'email': 'mail',
-    'fullname': 'field_display_name',
-}
 
 CONFIG = {
     'entityid' : 'urn:mace:umu.se:saml:ckan:sp',
@@ -25,17 +21,19 @@ CONFIG = {
             },
             'required_attributes': [
                 'uid',
-              #  'name',
-              #  'mail',
-              #  'status',
-              #  'roles',
-              #  'field_display_name',
-              #  'realname',
-              #  'groups',
-                'givenname',
-                'surname',
-                'edupersonaffiliation',
+                'name',
+                'mail',
+                'status',
+                'roles',
+                'field_display_name',
+                'realname',
+                'field_unique_id',
+                'field_type_of_user',
+                'field_organization_type',
+                'field_agency',
+                'field_organization',
             ],
+            'allow_unsolicited': True,
             'optional_attributes': [],
             'idp': ['urn:mace:umu.se:saml:ckan:idp'],
         }
@@ -63,7 +61,7 @@ CONFIG = {
     'name_form': NAME_FORMAT_URI,
     'logger': {
         'rotating': {
-            'filename': 'sp.log',
+            'filename': '/tmp/sp.log',
             'maxBytes': 100000,
             'backupCount': 5,
             },
