@@ -214,7 +214,7 @@ class Saml2Plugin(p.SingletonPlugin):
         if not p.toolkit.c.user:
             # A 401 HTTP Status will cause the login to be triggered
             return base.abort(401, p.toolkit._('Login required!'))
-        h.redirect_to(controller='user', action='dashboard')
+        h.redirect_to('/')
 
 
     def logout(self):
