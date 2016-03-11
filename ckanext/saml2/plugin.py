@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from saml2 import BINDING_HTTP_REDIRECT
+# from saml2 import BINDING_HTTP_REDIRECT
 
 import ckan.plugins as p
 import ckan.lib.base as base
@@ -9,6 +9,7 @@ import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
 import ckan.logic.schema as schema
+from ckan.common import request
 
 log = logging.getLogger('ckanext.saml2')
 
@@ -43,6 +44,7 @@ def request_reset(context, data_dict):
 
 rememberer_name = None
 
+
 def delete_cookies():
     global rememberer_name
     if rememberer_name is None:
@@ -54,15 +56,30 @@ def delete_cookies():
     domain = p.toolkit.request.environ['HTTP_HOST']
     base.response.delete_cookie(rememberer_name, domain='.' + domain)
 
+
+def is_staff_user(userobj):
+    """
+    Check whether current user shouldn't use sso and such things.
+
+    Currently it's just check by email but in future here can be used
+    some advanced methodology.
+    Should return (bool)True if user allowed to use native login system.
+    """
+    return not userobj.email.endswith('nsw.gov.au')
+
+
 class Saml2Plugin(p.SingletonPlugin):
 
     p.implements(p.IAuthenticator, inherit=True)
     p.implements(p.IRoutes, inherit=True)
     p.implements(p.IAuthFunctions, inherit=True)
+    p.implements(p.IConfigurer, inherit=True)
     p.implements(p.IConfigurable)
 
-
     saml_identify = None
+
+    def update_config(self, config):
+        p.toolkit.add_template_directory(config, 'templates')
 
     def make_mapping(self, key, config):
         data = config.get(key)
@@ -93,17 +110,19 @@ class Saml2Plugin(p.SingletonPlugin):
         return map
 
     def make_password(self):
-        # create a hard to guess password
+        """Create a hard to guess password."""
         out = ''
         for n in xrange(8):
             out += str(uuid.uuid4())
         return out
 
     def identify(self):
-        ''' This does work around saml2 authorization.
-        c.user contains the saml2 id of the logged in user we need to
-        convert this to represent the ckan user. '''
+        """
+        Work around saml2 authorization.
 
+        c.user contains the saml2 id of the logged in user we need to
+        convert this to represent the ckan user.
+        """
         # Can we find the user?
         c = p.toolkit.c
         environ = p.toolkit.request.environ
@@ -123,6 +142,8 @@ class Saml2Plugin(p.SingletonPlugin):
             except KeyError:
                 # we don't know the user stale cookies
                 saml_info = None
+            except AttributeError:
+                return
 
             # If we are here but no info then we need to clean up
             if not saml_info:
@@ -143,7 +164,7 @@ class Saml2Plugin(p.SingletonPlugin):
                 user_schema['id'] = [p.toolkit.get_validator('not_empty')]
                 user_schema['name'] = [p.toolkit.get_validator('not_empty')]
 
-                context = {'schema' : user_schema, 'ignore_auth': True}
+                context = {'schema': user_schema, 'ignore_auth': True}
                 user = p.toolkit.get_action('user_create')(context, data_dict)
                 c.userobj = model.User.get(c.user)
 
@@ -182,8 +203,8 @@ class Saml2Plugin(p.SingletonPlugin):
                 'id': org.id,
                 'object': c.userobj.id,
                 'object_type': 'user',
-                'capacity': 'editor' \
-                    if saml_info['field_type_of_user'][0] == 'Publisher' \
+                'capacity': 'editor'
+                    if saml_info['field_type_of_user'][0] == 'Publisher'
                     else 'member',
             }
             member_create_context = {
@@ -192,7 +213,6 @@ class Saml2Plugin(p.SingletonPlugin):
             }
 
             p.toolkit.get_action('member_create')(member_create_context, member_dict)
-
 
     def update_data_dict(self, data_dict, mapping, saml_info):
         for field in mapping:
@@ -212,8 +232,12 @@ class Saml2Plugin(p.SingletonPlugin):
         # We can be here either because we are requesting a login (no user)
         # or we have just been logged in.
         if not p.toolkit.c.user:
-            # A 401 HTTP Status will cause the login to be triggered
-            return base.abort(401, p.toolkit._('Login required!'))
+
+            if request.params.get('type') == 'sso':
+                # A 401 HTTP Status will cause the login to be triggered
+                return base.abort(401, p.toolkit._('Login required!'))
+            else:
+                return
         h.redirect_to(controller='user', action='dashboard')
 
 
@@ -230,8 +254,8 @@ class Saml2Plugin(p.SingletonPlugin):
     def abort(self, status_code, detail, headers, comment):
         # HTTP Status 401 causes a login redirect.  We need to prevent this
         # unless we are actually trying to login.
-        if (status_code == 401
-            and p.toolkit.request.environ['PATH_INFO'] != '/user/login'):
+        if (status_code == 401 and
+           p.toolkit.request.environ['PATH_INFO'] != '/user/login'):
                 h.redirect_to('saml2_unauthorized')
         return (status_code, detail, headers, comment)
 
