@@ -65,7 +65,7 @@ def is_staff_user(userobj):
     some advanced methodology.
     Should return (bool)True if user allowed to use native login system.
     """
-    return not userobj.email.endswith('nsw.gov.au')
+    return not str(userobj.email).endswith('nsw.gov.au')
 
 
 class Saml2Plugin(p.SingletonPlugin):
@@ -245,6 +245,18 @@ class Saml2Plugin(p.SingletonPlugin):
         environ = p.toolkit.request.environ
         subject_id = environ["repoze.who.identity"]['repoze.who.userid']
         client = environ['repoze.who.plugins']["saml2auth"]
+        
+        userobj = p.toolkit.c.userobj 
+        print userobj
+        if userobj and is_staff_user(userobj):
+            from pylons import session 
+            from ckan.common import response 
+            # environ['repoze.who.application'] = HTTPUnauthorized()
+            session.delete()
+            response.delete_cookie('auth_tkt')
+            # return None
+            h.redirect_to(controller='home', action='about')
+
         saml_logout = client.saml_client.global_logout(subject_id)
         rem = environ['repoze.who.plugins'][client.rememberer_name]
         rem.forget(environ, subject_id)
