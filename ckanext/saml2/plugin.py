@@ -140,7 +140,10 @@ class Saml2Plugin(p.SingletonPlugin):
                 # whether user authorized with native tool and if so -
                 # we are going to imitate success response
                 auth_tkt_user = environ["repoze.who.identity"].get('repoze.who.plugins.auth_tkt.userid')
-                saml_info = dict(name=[auth_tkt_user]) if auth_tkt_user else None
+                saml_info = {
+                    'name': [auth_tkt_user],
+                    self.organization_mapping['name']: 'fake'
+                } if auth_tkt_user else None
 
             # If we are here but don't know the user then we need to clean up
             if not saml_info:
