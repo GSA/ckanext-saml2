@@ -132,6 +132,7 @@ class Saml2Plugin(p.SingletonPlugin):
         user = environ.get('REMOTE_USER', '')
         if user:
             # we need to get the actual user info from the saml2auth client
+            skip_org = False
             try:
                 saml_info = environ["repoze.who.identity"]["user"]
             except KeyError:
@@ -140,10 +141,8 @@ class Saml2Plugin(p.SingletonPlugin):
                 # whether user authorized with native tool and if so -
                 # we are going to imitate success response
                 auth_tkt_user = environ["repoze.who.identity"].get('repoze.who.plugins.auth_tkt.userid')
-                saml_info = {
-                    'name': [auth_tkt_user],
-                    self.organization_mapping['name']: 'fake'
-                } if auth_tkt_user else None
+                saml_info = dict(name=[auth_tkt_user]) if auth_tkt_user else None
+                skip_org = True
 
             # If we are here but don't know the user then we need to clean up
             if not saml_info:
@@ -170,7 +169,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
             # previous 'user' in repoze.who.identity check is broken.
             # use referer check as an temp alternative.
-            if not environ.get('HTTP_REFERER'):
+            if not environ.get('HTTP_REFERER') and not skip_org:
                 if self.organization_mapping['name'] in saml_info:
                     self.create_organization(saml_info)
 
