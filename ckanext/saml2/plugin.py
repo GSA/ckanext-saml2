@@ -62,8 +62,6 @@ class Saml2Plugin(p.SingletonPlugin):
     p.implements(p.IConfigurable)
 
 
-    saml_identify = None
-
     def make_mapping(self, key, config):
         data = config.get(key)
         mapping = {}
@@ -110,21 +108,12 @@ class Saml2Plugin(p.SingletonPlugin):
         user = environ.get('REMOTE_USER', '')
         if user:
             # we need to get the actual user info from the saml2auth client
-            if not self.saml_identify:
-                plugins = environ['repoze.who.plugins']
-                saml_plugin = plugins.get('saml2auth')
-                if not saml_plugin:
-                    # saml2 repoze plugin not set up
-                    return
-                saml_client = saml_plugin.saml_client
-                self.saml_identify = saml_client.users.get_identity
-            try:
-                saml_info = self.saml_identify(user)[0]
+	    try:
+	        saml_info = environ["repoze.who.identity"]["user"]
             except KeyError:
-                # we don't know the user stale cookies
                 saml_info = None
 
-            # If we are here but no info then we need to clean up
+            # If we are here but don't know the user then we need to clean up
             if not saml_info:
                 delete_cookies()
                 h.redirect_to(controller='user', action='logged_out')
