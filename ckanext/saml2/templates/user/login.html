@@ -1,0 +1,7 @@
+{% ckan_extends %}
+
+{% block form %}
+  <a href="{{ h.url_for(controller='user', action='login', type='sso') }}" class="btn btn-primary">SSO</a>
+  <h2>or</h2>
+  {{ super() }}
+{% endblock %}
