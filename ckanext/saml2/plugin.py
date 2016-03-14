@@ -132,12 +132,15 @@ class Saml2Plugin(p.SingletonPlugin):
         user = environ.get('REMOTE_USER', '')
         if user:
             # we need to get the actual user info from the saml2auth client
-	    try:
-	        saml_info = environ["repoze.who.identity"]["user"]
+            try:
+                saml_info = environ["repoze.who.identity"]["user"]
             except KeyError:
-                saml_info = None
-            except AttributeError:
-                return
+                # very-very-very dirty hack. If we've got KeyError, that means
+                # that user does not authorized with sso. So, let's chech
+                # whether user authorized with native tool and if so -
+                # we are going to imitate success response
+                auth_tkt_user = environ["repoze.who.identity"].get('repoze.who.plugins.auth_tkt.userid')
+                saml_info = dict(name=[auth_tkt_user]) if auth_tkt_user else None
 
             # If we are here but don't know the user then we need to clean up
             if not saml_info:
@@ -249,6 +252,8 @@ class Saml2Plugin(p.SingletonPlugin):
             plugins = environ['repoze.who.plugins']
             friendlyform_plugin = plugins.get('friendlyform')
             rememberer_name = friendlyform_plugin.rememberer_name
+            domain = p.toolkit.request.environ['HTTP_HOST']
+            base.response.delete_cookie(rememberer_name, domain='.' + domain)
             base.response.delete_cookie(rememberer_name)
             h.redirect_to(controller='home', action='index')
 
