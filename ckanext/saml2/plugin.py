@@ -8,11 +8,14 @@ import ckan.lib.base as base
 import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
+from saml2_model.permissions import AccessPermissions
 import ckan.logic.schema as schema
 from ckan.controllers.user import UserController
 from routes.mapper import SubMapper
+from access_permission import ACCESS_PERMISSIONS
 
 log = logging.getLogger('ckanext.saml2')
+DELETE_USERS_PERMISSION = 'delete_users'
 
 
 def _no_permissions(context, msg):
@@ -47,6 +50,22 @@ def request_reset(context, data_dict):
     msg = p.toolkit._('Users cannot reset passwords.')
     return _no_permissions(context, msg)
 
+
+@logic.auth_sysadmins_check
+def user_delete(context, data_dict):
+    """Allow user deletion."""
+    # import pprint
+    user = context['auth_user_obj']
+    msg = p.toolkit._('Users cannot remove users')
+    try:
+        u_perm = ACCESS_PERMISSIONS.get_user_permissions(user.id)
+        if u_perm and u_perm.has_permission(DELETE_USERS_PERMISSION):
+            return {'success': True}
+    except:
+        pass
+    # if ACCESS_PERMISSIONS.get_user_permissions()
+    return _no_permissions(context, msg)
+
 rememberer_name = None
 
 
@@ -74,6 +93,26 @@ def is_staff_user(userobj):
     return not str(userobj.email).endswith('nsw.gov.au')
 
 
+@logic.side_effect_free
+def access_permission_show(context, data_dict):
+    """
+    Return access permissions of user.
+
+    :param id: the id or name of the user
+    :type id: string
+    :rtype: dictionary
+    """
+    model = context['model']
+    context['session'] = model.Session
+    id = logic.get_or_bust(data_dict, 'id')
+
+    user = model.User.get(id)
+    if user:
+        perms = ACCESS_PERMISSIONS.get_user_permissions(user.id)
+        if perms:
+            return perms.as_dict()
+
+
 class Saml2Plugin(p.SingletonPlugin):
     """SAML2 plugin."""
 
@@ -82,10 +121,21 @@ class Saml2Plugin(p.SingletonPlugin):
     p.implements(p.IAuthFunctions, inherit=True)
     p.implements(p.IConfigurer, inherit=True)
     p.implements(p.IConfigurable)
+    p.implements(p.IActions)
+
+    ACCESS_PERMISSIONS.create_permission(DELETE_USERS_PERMISSION)
+
+    def get_actions(self):
+        """Return new api actions."""
+        return {
+            'access_permission_show': access_permission_show
+        }
 
     def update_config(self, config):
         """Update environment config."""
+        p.toolkit.add_ckan_admin_tab(config, 'manage_permissions', 'Permissions')
         p.toolkit.add_template_directory(config, 'templates')
+        p.toolkit.add_resource('fanstatic', 'ckanext-saml2')
 
     def make_mapping(self, key, config):
         """Map user data from .ini file."""
@@ -110,6 +160,8 @@ class Saml2Plugin(p.SingletonPlugin):
                       action='saml2_unauthorized')
             m.connect('saml2_slo', '/slo', action='slo')
             m.connect('staff_login', '/service/login', action='staff_login')
+            m.connect('manage_permissions', '/ckan-admin/manage-permissions',
+                action='manage_permissions', ckan_icon="unlock-alt")
         return map
 
     def make_password(self):
@@ -284,6 +336,7 @@ class Saml2Plugin(p.SingletonPlugin):
             'user_create': user_create,
             'user_update': user_update,
             'user_reset': user_reset,
+            'user_delete': user_delete,
             'request_reset': request_reset,
         }
 
@@ -339,3 +392,32 @@ class Saml2Controller(UserController):
     def staff_login(self):
         """Default login page for staff members."""
         return self.login()
+
+    def manage_permissions(self):
+        """Admin page."""
+        context = {'model': model,
+                   'user': p.toolkit.c.user,
+                   'auth_user_obj': p.toolkit.c.userobj}
+        try:
+            logic.check_access('sysadmin', context, {})
+        except logic.NotAuthorized:
+            base.abort(401, p.toolkit._('Need to be system administrator to administer'))
+
+        data = p.toolkit.request.POST
+        if 'save' in data:
+            new_perms = data.getall('perm')
+            username = data.get('username')
+            user = model.User.get(username)
+            if user:
+                permissions = ACCESS_PERMISSIONS.get_user_permissions(
+                    user.id)
+                if not permissions:
+                    permissions = AccessPermissions(owner_id=user.id)
+                    model.Session.add(permissions)
+                permissions.set_permissions(new_perms)
+                model.Session.commit()
+            return base.redirect(h.full_current_url())
+
+        vars = {'perm_list': ACCESS_PERMISSIONS}
+        return base.render('admin/manage_permissions.html',
+                           extra_vars=vars)
