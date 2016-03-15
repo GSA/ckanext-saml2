@@ -30,6 +30,11 @@ def user_create(context, data_dict):
 @logic.auth_sysadmins_check
 def user_update(context, data_dict):
     """Deny user changes."""
+    if is_staff_user(context['auth_user_obj']):
+        id = logic.get_or_bust(data_dict, 'id')
+        modified_user = model.User.get(id)
+        if is_staff_user(modified_user):
+            return {'success': True}
     msg = p.toolkit._('Users cannot be edited.')
     return _no_permissions(context, msg)
 
