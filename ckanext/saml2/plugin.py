@@ -1,6 +1,6 @@
 import logging
 import uuid
-
+from pylons import config
 # from saml2 import BINDING_HTTP_REDIRECT
 
 import ckan.plugins as p
@@ -234,6 +234,18 @@ class Saml2Plugin(p.SingletonPlugin):
 
             context = {'schema': user_schema, 'ignore_auth': True}
             user = p.toolkit.get_action('user_create')(context, data_dict)
+
+            user_org = config.get('saml2.default_org')
+            user_role = config.get('saml2.default_role')
+            if user_org and user_role:
+                member_dict = {
+                    'id': user_org,
+                    'username': user.name,
+                    'role': user_role
+                }
+                p.toolkit.get_action('organization_member_create')(
+                    context, member_dict)
+
             c.userobj = model.User.get(c.user)
 
         # previous 'user' in repoze.who.identity check is broken.
