@@ -13,6 +13,8 @@ import ckan.logic.schema as schema
 from ckan.controllers.user import UserController
 from routes.mapper import SubMapper
 from access_permission import ACCESS_PERMISSIONS
+from saml2.ident import decode as unserialise_nameid
+from saml2.s2repoze.plugins.sp import SAML2Plugin
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
@@ -161,7 +163,7 @@ class Saml2Plugin(p.SingletonPlugin):
             m.connect('saml2_slo', '/slo', action='slo')
             m.connect('staff_login', '/service/login', action='staff_login')
             m.connect('manage_permissions', '/ckan-admin/manage-permissions',
-                action='manage_permissions', ckan_icon="unlock-alt")
+                      action='manage_permissions', ckan_icon="unlock-alt")
         return map
 
     def make_password(self):
@@ -181,49 +183,57 @@ class Saml2Plugin(p.SingletonPlugin):
         # Can we find the user?
         c = p.toolkit.c
         environ = p.toolkit.request.environ
-        user = environ.get('REMOTE_USER', '')
-        if user:
-            # we need to get the actual user info from the saml2auth client
-            skip_org = False
-            try:
-                saml_info = environ["repoze.who.identity"]["user"]
-            except KeyError:
-                # very-very-very dirty hack. If we've got KeyError, that means
-                # that user does not authorized with sso. So, let's chech
-                # whether user authorized with native tool and if so -
-                # we are going to imitate success response
-                auth_tkt_user = environ["repoze.who.identity"].get('repoze.who.plugins.auth_tkt.userid')
-                saml_info = dict(name=[auth_tkt_user]) if auth_tkt_user else None
-                skip_org = True
 
-            # If we are here but don't know the user then we need to clean up
-            if not saml_info:
-                delete_cookies()
-                h.redirect_to(controller='user', action='logged_out')
+        # Don't continue if this user wasn't authenticated by SAML2
+        try:
+            if not isinstance(environ["repoze.who.identity"]["authenticator"], SAML2Plugin):
+                log.debug("User not authenticated by SAML2, giving up")
+                return
+        except KeyError:
+            return
+        user = environ.get('REMOTE_USER', None)
+        if user is None:
+            return
 
-            c.user = saml_info['name'][0]
+        c.user = unserialise_nameid(user).text
+        log.debug("REMOTE_USER = \"{0}\"".format(c.user))
+        log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
+
+        # get the actual user info from the saml2auth client
+        try:
+            saml_info = environ["repoze.who.identity"]["user"]
+        except KeyError:
+            # This is a request in an existing session so no need to provision
+            # an account, set c.userobj and return
+            c.userobj = model.User.get(c.user)
+            return
+
+        c.userobj = model.User.get(c.user)
+
+        if c.userobj is None:
+            # Create the user
+            data_dict = {
+                'password': self.make_password(),
+            }
+            # Force state to be active, reprovisioning previously
+            # deleted accounts. Assumes only the IAM driving the
+            # IdP will deprovision user accounts,
+            data_dict['state'] = 'active'
+            self.update_data_dict(data_dict, self.user_mapping, saml_info)
+            # Update the user schema to allow user creation
+            user_schema = schema.default_user_schema()
+            user_schema['id'] = [p.toolkit.get_validator('not_empty')]
+            user_schema['name'] = [p.toolkit.get_validator('not_empty')]
+
+            context = {'schema': user_schema, 'ignore_auth': True}
+            user = p.toolkit.get_action('user_create')(context, data_dict)
             c.userobj = model.User.get(c.user)
 
-            if c.userobj is None:
-                # Create the user
-                data_dict = {
-                    'password': self.make_password(),
-                }
-                self.update_data_dict(data_dict, self.user_mapping, saml_info)
-                # Update the user schema to allow user creation
-                user_schema = schema.default_user_schema()
-                user_schema['id'] = [p.toolkit.get_validator('not_empty')]
-                user_schema['name'] = [p.toolkit.get_validator('not_empty')]
-
-                context = {'schema': user_schema, 'ignore_auth': True}
-                user = p.toolkit.get_action('user_create')(context, data_dict)
-                c.userobj = model.User.get(c.user)
-
-            # previous 'user' in repoze.who.identity check is broken.
-            # use referer check as an temp alternative.
-            if not environ.get('HTTP_REFERER') and not skip_org:
-                if self.organization_mapping['name'] in saml_info:
-                    self.create_organization(saml_info)
+        # previous 'user' in repoze.who.identity check is broken.
+        # use referer check as an temp alternative.
+        if not environ.get('HTTP_REFERER'):
+            if 'name' in self.organization_mapping and self.organization_mapping['name'] in saml_info:
+                self.create_organization(saml_info)
 
     def create_organization(self, saml_info):
         """Create organization using mapping."""
@@ -368,23 +378,23 @@ class Saml2Controller(UserController):
                 headers, success = client.saml_client.do_http_redirect_logout(get, subject_id)
                 h.redirect_to(headers[0][1])
             elif saml_resp:
-             ##   # fix the cert so that it is on multiple lines
-             ##   out = []
-             ##   # if on multiple lines make it a single one
-             ##   line = ''.join(saml_resp.split('\n'))
-             ##   while len(line) > 64:
-             ##       out.append(line[:64])
-             ##       line = line[64:]
-             ##   out.append(line)
-             ##   saml_resp = '\n'.join(out)
-             ##   try:
-             ##       res = client.saml_client.logout_request_response(
-             ##           saml_resp,
-             ##           binding=BINDING_HTTP_REDIRECT
-             ##       )
-             ##   except KeyError:
-             ##       # return error reply
-             ##       pass
+             #   # fix the cert so that it is on multiple lines
+             #   out = []
+             #   # if on multiple lines make it a single one
+             #   line = ''.join(saml_resp.split('\n'))
+             #   while len(line) > 64:
+             #       out.append(line[:64])
+             #       line = line[64:]
+             #   out.append(line)
+             #   saml_resp = '\n'.join(out)
+             #   try:
+             #       res = client.saml_client.logout_request_response(
+             #           saml_resp,
+             #           binding=BINDING_HTTP_REDIRECT
+             #       )
+             #   except KeyError:
+             #       # return error reply
+             #       pass
 
                 delete_cookies()
                 h.redirect_to(controller='user', action='logged_out')
