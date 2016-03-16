@@ -9,10 +9,10 @@ import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
 from saml2_model.permissions import AccessPermissions
+from access_permission import ACCESS_PERMISSIONS
 import ckan.logic.schema as schema
 from ckan.controllers.user import UserController
 from routes.mapper import SubMapper
-from access_permission import ACCESS_PERMISSIONS
 from saml2.ident import decode as unserialise_nameid
 from saml2.s2repoze.plugins.sp import SAML2Plugin
 
@@ -142,9 +142,9 @@ class Saml2Plugin(p.SingletonPlugin):
 
     def update_config(self, config):
         """Update environment config."""
+        p.toolkit.add_resource('fanstatic', 'ckanext-saml2')
         p.toolkit.add_ckan_admin_tab(config, 'manage_permissions', 'Permissions')
         p.toolkit.add_template_directory(config, 'templates')
-        p.toolkit.add_resource('fanstatic', 'ckanext-saml2')
 
     def make_mapping(self, key, config):
         """Map user data from .ini file."""
