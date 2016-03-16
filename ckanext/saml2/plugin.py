@@ -2,6 +2,7 @@ import logging
 import uuid
 
 # from saml2 import BINDING_HTTP_REDIRECT
+import pylons.config as config
 
 import ckan.plugins as p
 import ckan.lib.base as base
@@ -31,10 +32,13 @@ def user_create(context, data_dict):
 def user_update(context, data_dict):
     """Deny user changes."""
     current_user = context['auth_user_obj']
-    if is_staff_user(current_user):
-        id = logic.get_or_bust(data_dict, 'id')
+    if is_local_user(current_user):
+        if isinstance(data_dict, model.User):
+            id = data_dict.id
+        else:
+            id = logic.get_or_bust(data_dict, 'id')
         modified_user = model.User.get(id)
-        if modified_user.id == current_user.id or is_staff_user(
+        if modified_user.id == current_user.id or is_local_user(
           modified_user) and current_user.sysadmin:
             return {'success': True}
     msg = p.toolkit._('Users cannot be edited.')
@@ -70,7 +74,7 @@ def delete_cookies():
     base.response.delete_cookie(rememberer_name, domain='.' + domain)
 
 
-def is_staff_user(userobj):
+def is_local_user(userobj):
     """
     Check whether current user shouldn't use sso and such things.
 
@@ -78,7 +82,16 @@ def is_staff_user(userobj):
     some advanced methodology.
     Should return (bool)True if user allowed to use native login system.
     """
-    return userobj and not str(userobj.email).endswith('nsw.gov.au')
+    _local_domains = config.get('saml2.local_email_domains', '')
+    _sso_domains = config.get('saml2.sso_email_domains', 'nsw.gov.au')
+
+    is_local_check = True if _local_domains else False
+    checked_domains = (_local_domains or _sso_domains).split()
+
+    if userobj:
+        email = str(userobj.email)
+        return bool(filter(
+            lambda d: email.endswith(d), checked_domains)) == is_local_check
 
 
 class Saml2Plugin(p.SingletonPlugin):
@@ -257,7 +270,7 @@ class Saml2Plugin(p.SingletonPlugin):
         environ = p.toolkit.request.environ
 
         userobj = p.toolkit.c.userobj
-        if userobj and is_staff_user(userobj):
+        if userobj and is_local_user(userobj):
             plugins = environ['repoze.who.plugins']
             friendlyform_plugin = plugins.get('friendlyform')
             rememberer_name = friendlyform_plugin.rememberer_name
