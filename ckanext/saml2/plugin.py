@@ -401,7 +401,10 @@ class Saml2Controller(UserController):
         try:
             logic.check_access('sysadmin', context, {})
         except logic.NotAuthorized:
-            base.abort(401, p.toolkit._('Need to be system administrator to administer'))
+            code, msg = 403, 'Not authorized to see this page'
+            if context['user']:
+                code, msg = 401, 'Need to be system administrator to administer'
+            base.abort(code, p.toolkit._(msg))
 
         data = p.toolkit.request.POST
         if 'save' in data:
