@@ -35,6 +35,13 @@ def user_create(context, data_dict):
 @logic.auth_sysadmins_check
 def user_update(context, data_dict):
     """Deny user changes."""
+    current_user = context['auth_user_obj']
+    if is_staff_user(current_user):
+        id = logic.get_or_bust(data_dict, 'id')
+        modified_user = model.User.get(id)
+        if modified_user.id == current_user.id or is_staff_user(
+          modified_user) and current_user.sysadmin:
+            return {'success': True}
     msg = p.toolkit._('Users cannot be edited.')
     return _no_permissions(context, msg)
 
@@ -92,7 +99,7 @@ def is_staff_user(userobj):
     some advanced methodology.
     Should return (bool)True if user allowed to use native login system.
     """
-    return not str(userobj.email).endswith('nsw.gov.au')
+    return userobj and not str(userobj.email).endswith('nsw.gov.au')
 
 
 @logic.side_effect_free
