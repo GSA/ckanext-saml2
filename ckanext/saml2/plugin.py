@@ -418,9 +418,7 @@ class Saml2Controller(UserController):
         try:
             logic.check_access('sysadmin', context, {})
         except logic.NotAuthorized:
-            code, msg = 401, 'User not authenticated'
-            if context['user']:
-                code, msg = 403, 'Not authorized to see this page'
+            code, msg = 401, 'Not authorized to see this page'
             base.abort(code, p.toolkit._(msg))
 
         data = p.toolkit.request.POST
