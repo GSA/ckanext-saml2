@@ -1,6 +1,6 @@
 import logging
 import uuid
-
+from pylons import config
 # from saml2 import BINDING_HTTP_REDIRECT
 import pylons.config as config
 
@@ -9,6 +9,8 @@ import ckan.lib.base as base
 import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
+from saml2_model.permissions import AccessPermissions
+from access_permission import ACCESS_PERMISSIONS
 import ckan.logic.schema as schema
 from ckan.controllers.user import UserController
 from routes.mapper import SubMapper
@@ -16,6 +18,7 @@ from saml2.ident import decode as unserialise_nameid
 from saml2.s2repoze.plugins.sp import SAML2Plugin
 
 log = logging.getLogger('ckanext.saml2')
+DELETE_USERS_PERMISSION = 'delete_users'
 
 
 def _no_permissions(context, msg):
@@ -59,6 +62,22 @@ def user_reset(context, data_dict):
 def request_reset(context, data_dict):
     """Deny user reset."""
     msg = p.toolkit._('Users cannot reset passwords.')
+    return _no_permissions(context, msg)
+
+
+@logic.auth_sysadmins_check
+def user_delete(context, data_dict):
+    """Allow user deletion."""
+    # import pprint
+    user = context['auth_user_obj']
+    msg = p.toolkit._('Users cannot remove users')
+    try:
+        u_perm = ACCESS_PERMISSIONS.get_user_permissions(user.id)
+        if u_perm and u_perm.has_permission(DELETE_USERS_PERMISSION):
+            return {'success': True}
+    except:
+        pass
+    # if ACCESS_PERMISSIONS.get_user_permissions()
     return _no_permissions(context, msg)
 
 rememberer_name = None
@@ -110,6 +129,26 @@ def is_local_user(userobj):
             lambda d: email.endswith(d), checked_domains)) == is_local_check
 
 
+@logic.side_effect_free
+def access_permission_show(context, data_dict):
+    """
+    Return access permissions of user.
+
+    :param id: the id or name of the user
+    :type id: string
+    :rtype: dictionary
+    """
+    model = context['model']
+    context['session'] = model.Session
+    id = logic.get_or_bust(data_dict, 'id')
+
+    user = model.User.get(id)
+    if user:
+        perms = ACCESS_PERMISSIONS.get_user_permissions(user.id)
+        if perms:
+            return perms.as_dict()
+
+
 class Saml2Plugin(p.SingletonPlugin):
     """SAML2 plugin."""
 
@@ -118,9 +157,20 @@ class Saml2Plugin(p.SingletonPlugin):
     p.implements(p.IAuthFunctions, inherit=True)
     p.implements(p.IConfigurer, inherit=True)
     p.implements(p.IConfigurable)
+    p.implements(p.IActions)
+
+    ACCESS_PERMISSIONS.create_permission(DELETE_USERS_PERMISSION)
+
+    def get_actions(self):
+        """Return new api actions."""
+        return {
+            'access_permission_show': access_permission_show
+        }
 
     def update_config(self, config):
         """Update environment config."""
+        p.toolkit.add_resource('fanstatic', 'ckanext-saml2')
+        p.toolkit.add_ckan_admin_tab(config, 'manage_permissions', 'Permissions')
         p.toolkit.add_template_directory(config, 'templates')
 
     def make_mapping(self, key, config):
@@ -146,6 +196,8 @@ class Saml2Plugin(p.SingletonPlugin):
                       action='saml2_unauthorized')
             m.connect('saml2_slo', '/slo', action='slo')
             m.connect('staff_login', '/service/login', action='staff_login')
+            m.connect('manage_permissions', '/ckan-admin/manage-permissions',
+                      action='manage_permissions', ckan_icon="unlock-alt")
         return map
 
     def make_password(self):
@@ -207,8 +259,20 @@ class Saml2Plugin(p.SingletonPlugin):
             user_schema['id'] = [p.toolkit.get_validator('not_empty')]
             user_schema['name'] = [p.toolkit.get_validator('not_empty')]
 
-            context = {'schema' : user_schema, 'ignore_auth': True}
+            context = {'schema': user_schema, 'ignore_auth': True}
             user = p.toolkit.get_action('user_create')(context, data_dict)
+
+            user_org = config.get('saml2.default_org')
+            user_role = config.get('saml2.default_role')
+            if user_org and user_role:
+                member_dict = {
+                    'id': user_org,
+                    'username': user.name,
+                    'role': user_role
+                }
+                p.toolkit.get_action('organization_member_create')(
+                    context, member_dict)
+
             c.userobj = model.User.get(c.user)
 
         # previous 'user' in repoze.who.identity check is broken.
@@ -328,6 +392,7 @@ class Saml2Plugin(p.SingletonPlugin):
             'user_create': user_create,
             'user_update': user_update,
             'user_reset': user_reset,
+            'user_delete': user_delete,
             'request_reset': request_reset,
         }
 
@@ -359,23 +424,23 @@ class Saml2Controller(UserController):
                 headers, success = client.saml_client.do_http_redirect_logout(get, subject_id)
                 h.redirect_to(headers[0][1])
             elif saml_resp:
-             ##   # fix the cert so that it is on multiple lines
-             ##   out = []
-             ##   # if on multiple lines make it a single one
-             ##   line = ''.join(saml_resp.split('\n'))
-             ##   while len(line) > 64:
-             ##       out.append(line[:64])
-             ##       line = line[64:]
-             ##   out.append(line)
-             ##   saml_resp = '\n'.join(out)
-             ##   try:
-             ##       res = client.saml_client.logout_request_response(
-             ##           saml_resp,
-             ##           binding=BINDING_HTTP_REDIRECT
-             ##       )
-             ##   except KeyError:
-             ##       # return error reply
-             ##       pass
+             #   # fix the cert so that it is on multiple lines
+             #   out = []
+             #   # if on multiple lines make it a single one
+             #   line = ''.join(saml_resp.split('\n'))
+             #   while len(line) > 64:
+             #       out.append(line[:64])
+             #       line = line[64:]
+             #   out.append(line)
+             #   saml_resp = '\n'.join(out)
+             #   try:
+             #       res = client.saml_client.logout_request_response(
+             #           saml_resp,
+             #           binding=BINDING_HTTP_REDIRECT
+             #       )
+             #   except KeyError:
+             #       # return error reply
+             #       pass
 
                 delete_cookies()
                 h.redirect_to(controller='user', action='logged_out')
@@ -383,3 +448,35 @@ class Saml2Controller(UserController):
     def staff_login(self):
         """Default login page for staff members."""
         return self.login()
+
+    def manage_permissions(self):
+        """Admin page."""
+        context = {'model': model,
+                   'user': p.toolkit.c.user,
+                   'auth_user_obj': p.toolkit.c.userobj}
+        try:
+            logic.check_access('sysadmin', context, {})
+        except logic.NotAuthorized:
+            code, msg = 403, 'Not authorized to see this page'
+            if context['user']:
+                code, msg = 401, 'Need to be system administrator to administer'
+            base.abort(code, p.toolkit._(msg))
+
+        data = p.toolkit.request.POST
+        if 'save' in data:
+            new_perms = data.getall('perm')
+            username = data.get('username')
+            user = model.User.get(username)
+            if user:
+                permissions = ACCESS_PERMISSIONS.get_user_permissions(
+                    user.id)
+                if not permissions:
+                    permissions = AccessPermissions(owner_id=user.id)
+                    model.Session.add(permissions)
+                permissions.set_permissions(new_perms)
+                model.Session.commit()
+            return base.redirect(h.full_current_url())
+
+        vars = {'perm_list': ACCESS_PERMISSIONS}
+        return base.render('admin/manage_permissions.html',
+                           extra_vars=vars)
