@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-# from saml2 import BINDING_HTTP_REDIRECT
+import pylons.config as config
 
 import ckan.plugins as p
 import ckan.lib.base as base
@@ -32,6 +32,17 @@ def user_create(context, data_dict):
 @logic.auth_sysadmins_check
 def user_update(context, data_dict):
     """Deny user changes."""
+    current_user = context['auth_user_obj']
+
+    if isinstance(data_dict, model.User):
+        id = data_dict.id
+    else:
+        id = logic.get_or_bust(data_dict, 'id')
+    modified_user = model.User.get(id)
+
+    if is_local_user(modified_user) and (
+      current_user.sysadmin or modified_user.id == current_user.id):
+            return {'success': True}
     msg = p.toolkit._('Users cannot be edited.')
     return _no_permissions(context, msg)
 
@@ -65,15 +76,37 @@ def delete_cookies():
     base.response.delete_cookie(rememberer_name, domain='.' + domain)
 
 
-def is_staff_user(userobj):
+def is_local_user(userobj):
     """
     Check whether current user shouldn't use sso and such things.
 
-    Currently it's just check by email but in future here can be used
-    some advanced methodology.
-    Should return (bool)True if user allowed to use native login system.
+    :saml2.local_email_domains: - list of space separated domains
+    in config file that treated as local
+    :saml2.sso_email_domains: - list of space separated domains
+    in config file that treated as sso provisioned
+
+    If both are defined and not empty, first one has more precedence.
+
+    Should return (bool)True if user allowed to use native login system and
+    anything else, that sso users can't do
+
     """
-    return not str(userobj.email).endswith('nsw.gov.au')
+    _local_domains = config.get('saml2.local_email_domains', '')
+    _sso_domains = config.get('saml2.sso_email_domains', '')
+
+    # precedence defined in next two lines
+    is_local_check = True if _local_domains else False
+    checked_domains = (_local_domains or _sso_domains).split()
+
+    # there are no any rules for separating users, so let's asuume
+    # that all users are created with sso
+    if not checked_domains:
+        return False
+
+    if userobj:
+        email = str(userobj.email)
+        return bool(filter(
+            lambda d: email.endswith(d), checked_domains)) == is_local_check
 
 
 class Saml2Plugin(p.SingletonPlugin):
@@ -260,7 +293,7 @@ class Saml2Plugin(p.SingletonPlugin):
         environ = p.toolkit.request.environ
 
         userobj = p.toolkit.c.userobj
-        if userobj and is_staff_user(userobj):
+        if userobj and is_local_user(userobj):
             plugins = environ['repoze.who.plugins']
             friendlyform_plugin = plugins.get('friendlyform')
             rememberer_name = friendlyform_plugin.rememberer_name
