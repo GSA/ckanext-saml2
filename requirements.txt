@@ -1,1 +1,1 @@
--e git+https://github.com/tobes/pysaml2.git@fixes#egg=pysaml2
+-e git+https://github.com/rohe/pysaml2.git@4.0.0#egg=pysaml2
