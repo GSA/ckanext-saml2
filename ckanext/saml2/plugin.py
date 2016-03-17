@@ -9,6 +9,8 @@ import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
 import ckan.logic.schema as schema
+from saml2.ident import decode as unserialise_nameid
+from saml2.s2repoze.plugins.sp import SAML2Plugin
 
 log = logging.getLogger('ckanext.saml2')
 
@@ -62,8 +64,6 @@ class Saml2Plugin(p.SingletonPlugin):
     p.implements(p.IConfigurable)
 
 
-    saml_identify = None
-
     def make_mapping(self, key, config):
         data = config.get(key)
         mapping = {}
@@ -107,51 +107,57 @@ class Saml2Plugin(p.SingletonPlugin):
         # Can we find the user?
         c = p.toolkit.c
         environ = p.toolkit.request.environ
-        user = environ.get('REMOTE_USER', '')
-        if user:
-            # we need to get the actual user info from the saml2auth client
-            if not self.saml_identify:
-                plugins = environ['repoze.who.plugins']
-                saml_plugin = plugins.get('saml2auth')
-                if not saml_plugin:
-                    # saml2 repoze plugin not set up
-                    return
-                saml_client = saml_plugin.saml_client
-                self.saml_identify = saml_client.users.get_identity
-            try:
-                saml_info = self.saml_identify(user)[0]
-            except KeyError:
-                # we don't know the user stale cookies
-                saml_info = None
 
-            # If we are here but no info then we need to clean up
-            if not saml_info:
-                delete_cookies()
-                h.redirect_to(controller='user', action='logged_out')
+        # Don't continue if this user wasn't authenticated by SAML2
+        try:
+            if not isinstance(environ["repoze.who.identity"]["authenticator"], SAML2Plugin):
+                log.debug("User not authenticated by SAML2, giving up")
+                return
+        except KeyError:
+            return
+        user = environ.get('REMOTE_USER', None)
+        if user is None:
+            return
 
-            c.user = saml_info['name'][0]
+        c.user = unserialise_nameid(user).text
+        log.debug("REMOTE_USER = \"{0}\"".format(c.user))
+        log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
+
+        # get the actual user info from the saml2auth client
+        try:
+            saml_info = environ["repoze.who.identity"]["user"]
+        except KeyError:
+            # This is a request in an existing session so no need to provision
+            # an account, set c.userobj and return
+            c.userobj = model.User.get(c.user)
+            return
+
+        c.userobj = model.User.get(c.user)
+
+        if c.userobj is None:
+            # Create the user
+            data_dict = {
+                'password': self.make_password(),
+            }
+            # Force state to be active, reprovisioning previously
+            # deleted accounts. Assumes only the IAM driving the
+            # IdP will deprovision user accounts,
+            data_dict['state'] = 'active'
+            self.update_data_dict(data_dict, self.user_mapping, saml_info)
+            # Update the user schema to allow user creation
+            user_schema = schema.default_user_schema()
+            user_schema['id'] = [p.toolkit.get_validator('not_empty')]
+            user_schema['name'] = [p.toolkit.get_validator('not_empty')]
+
+            context = {'schema' : user_schema, 'ignore_auth': True}
+            user = p.toolkit.get_action('user_create')(context, data_dict)
             c.userobj = model.User.get(c.user)
 
-            if c.userobj is None:
-                # Create the user
-                data_dict = {
-                    'password': self.make_password(),
-                }
-                self.update_data_dict(data_dict, self.user_mapping, saml_info)
-                # Update the user schema to allow user creation
-                user_schema = schema.default_user_schema()
-                user_schema['id'] = [p.toolkit.get_validator('not_empty')]
-                user_schema['name'] = [p.toolkit.get_validator('not_empty')]
-
-                context = {'schema' : user_schema, 'ignore_auth': True}
-                user = p.toolkit.get_action('user_create')(context, data_dict)
-                c.userobj = model.User.get(c.user)
-
-            # previous 'user' in repoze.who.identity check is broken.
-            # use referer check as an temp alternative.
-            if not environ.get('HTTP_REFERER'):
-                if self.organization_mapping['name'] in saml_info:
-                    self.create_organization(saml_info)
+        # previous 'user' in repoze.who.identity check is broken.
+        # use referer check as an temp alternative.
+        if not environ.get('HTTP_REFERER'):
+            if 'name' in self.organization_mapping and self.organization_mapping['name'] in saml_info:
+                self.create_organization(saml_info)
 
     def create_organization(self, saml_info):
         org_name = saml_info[self.organization_mapping['name']][0]
