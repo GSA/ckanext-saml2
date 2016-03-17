@@ -1,6 +1,6 @@
 import logging
 import uuid
-
+from pylons import config
 # from saml2 import BINDING_HTTP_REDIRECT
 import pylons.config as config
 
@@ -37,14 +37,15 @@ def user_create(context, data_dict):
 def user_update(context, data_dict):
     """Deny user changes."""
     current_user = context['auth_user_obj']
-    if is_local_user(current_user):
-        if isinstance(data_dict, model.User):
-            id = data_dict.id
-        else:
-            id = logic.get_or_bust(data_dict, 'id')
-        modified_user = model.User.get(id)
-        if modified_user.id == current_user.id or is_local_user(
-          modified_user) and current_user.sysadmin:
+
+    if isinstance(data_dict, model.User):
+        id = data_dict.id
+    else:
+        id = logic.get_or_bust(data_dict, 'id')
+    modified_user = model.User.get(id)
+
+    if is_local_user(modified_user) and (
+      current_user.sysadmin or modified_user.id == current_user.id):
             return {'success': True}
     msg = p.toolkit._('Users cannot be edited.')
     return _no_permissions(context, msg)
@@ -260,6 +261,18 @@ class Saml2Plugin(p.SingletonPlugin):
 
             context = {'schema': user_schema, 'ignore_auth': True}
             user = p.toolkit.get_action('user_create')(context, data_dict)
+
+            user_org = config.get('saml2.default_org')
+            user_role = config.get('saml2.default_role')
+            if user_org and user_role:
+                member_dict = {
+                    'id': user_org,
+                    'username': user.name,
+                    'role': user_role
+                }
+                p.toolkit.get_action('organization_member_create')(
+                    context, member_dict)
+
             c.userobj = model.User.get(c.user)
 
         # previous 'user' in repoze.who.identity check is broken.
