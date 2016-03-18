@@ -1,7 +1,6 @@
 import logging
 import uuid
 from pylons import config
-# from saml2 import BINDING_HTTP_REDIRECT
 
 import ckan.plugins as p
 import ckan.lib.base as base
@@ -240,7 +239,7 @@ class Saml2Plugin(p.SingletonPlugin):
             if user_org and user_role:
                 member_dict = {
                     'id': user_org,
-                    'username': user.name,
+                    'username': user['name'],
                     'role': user_role
                 }
                 p.toolkit.get_action('organization_member_create')(
