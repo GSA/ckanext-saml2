@@ -1,7 +1,7 @@
 import logging
 import uuid
-from pylons import config
 # from saml2 import BINDING_HTTP_REDIRECT
+
 import pylons.config as config
 
 import ckan.plugins as p
