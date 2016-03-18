@@ -244,22 +244,28 @@ class Saml2Plugin(p.SingletonPlugin):
 
         c.userobj = model.User.get(c.user)
 
+        # If account exists and is deleted, reactivate it. Assumes
+        # only the IAM driving the IdP will deprovision user accounts
+        # and wouldn't allow a user to authenticate for this app if
+        # they shouldn't have access.
+        if c.userobj is not None and c.userobj.is_deleted():
+            log.debug("Reactivating user")
+            c.userobj.activate()
+            c.userobj.commit()
+
         if c.userobj is None:
             # Create the user
             data_dict = {
                 'password': self.make_password(),
             }
-            # Force state to be active, reprovisioning previously
-            # deleted accounts. Assumes only the IAM driving the
-            # IdP will deprovision user accounts,
-            data_dict['state'] = 'active'
             self.update_data_dict(data_dict, self.user_mapping, saml_info)
             # Update the user schema to allow user creation
             user_schema = schema.default_user_schema()
             user_schema['id'] = [p.toolkit.get_validator('not_empty')]
             user_schema['name'] = [p.toolkit.get_validator('not_empty')]
 
-            context = {'schema': user_schema, 'ignore_auth': True}
+            log.debug("Creating user: {0}".format(data_dict))
+            context = {'schema' : user_schema, 'ignore_auth': True}
             user = p.toolkit.get_action('user_create')(context, data_dict)
 
             user_org = config.get('saml2.default_org')
@@ -267,7 +273,7 @@ class Saml2Plugin(p.SingletonPlugin):
             if user_org and user_role:
                 member_dict = {
                     'id': user_org,
-                    'username': user.name,
+                    'username': user['name'],
                     'role': user_role
                 }
                 p.toolkit.get_action('organization_member_create')(
