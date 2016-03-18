@@ -65,7 +65,6 @@ def request_reset(context, data_dict):
     return _no_permissions(context, msg)
 
 
-@logic.auth_sysadmins_check
 def user_delete(context, data_dict):
     """Allow user deletion."""
     # import pprint
