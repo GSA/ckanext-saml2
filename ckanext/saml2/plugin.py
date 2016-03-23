@@ -373,12 +373,27 @@ class Saml2Plugin(p.SingletonPlugin):
             h.redirect_to(controller='home', action='index')
 
         subject_id = environ["repoze.who.identity"]['repoze.who.userid']
+        name_id = unserialise_nameid(subject_id)
         client = environ['repoze.who.plugins']["saml2auth"]
-        saml_logout = client.saml_client.global_logout(subject_id)
+
+        # Taken from saml2.client:global_logout but forces
+        # HTTP-Redirect binding.
+        entity_ids = client.saml_client.users.issuers_of_info(name_id)
+        saml_logout = client.saml_client.do_logout(name_id, entity_ids,
+                                reason='urn:oasis:names:tc:SAML:2.0:logout:user',
+                                expire=None, sign=True,
+                                expected_binding=BINDING_HTTP_REDIRECT,
+                                sign_alg="rsa-sha256", digest_alg="hmac-sha256")
+
         rem = environ['repoze.who.plugins'][client.rememberer_name]
         rem.forget(environ, subject_id)
-        # do the redirect the url is in the saml_logout
-        h.redirect_to(saml_logout[2][0][1])
+
+        # Redirect to send the logout request to the IdP, using the
+        # url in saml_logout. Assumes only one IdP will be returned.
+       for key in saml_logout.keys():
+           location = saml_logout[key][1]['headers'][0][1]
+           log.debug("IdP logout URL = {0}".format(location))
+           h.redirect_to(location)
 
     def abort(self, status_code, detail, headers, comment):
         """
@@ -424,10 +439,14 @@ class Saml2Controller(UserController):
             saml_req = p.toolkit.request.GET.get('SAMLRequest', '')
 
             if saml_req:
-                get = p.toolkit.request.GET
-                subject_id = environ["repoze.who.identity"]['repoze.who.userid']
-                headers, success = client.saml_client.do_http_redirect_logout(get, subject_id)
-                h.redirect_to(headers[0][1])
+                log.debug('Received SLO request from IdP')
+                # Ignore whatever the pysaml2 plugin did, which as of
+                # 4.0.0 seems broken, and do it ourselves
+                name_id = unserialise_nameid(environ.get('REMOTE_USER'))
+                response = client.saml_client.handle_logout_request(
+                    saml_req, name_id, BINDING_HTTP_REDIRECT)
+                location = client._handle_logout(response).location()
+                h.redirect_to(location, code=303)
             elif saml_resp:
              #   # fix the cert so that it is on multiple lines
              #   out = []
