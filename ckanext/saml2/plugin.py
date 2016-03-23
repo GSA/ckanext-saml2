@@ -1,6 +1,7 @@
 import logging
 import uuid
-# from saml2 import BINDING_HTTP_REDIRECT
+
+from saml2 import BINDING_HTTP_REDIRECT
 
 import pylons.config as config
 
