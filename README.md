@@ -23,6 +23,12 @@ saml2.organization_mapping =
     title~field_organization
     extras:organization_type~field_organization_type
 ```
+
+- SP-initiated SLO used by default, without any changes in config file. In order to make this more prominent you can add directive `saml2.sp.slo` in ckan .ini file. Values `true`, `yes`, `on`, `y`, `t`, `1` will be treated as true.In order to use default CKAN logout, set one of `false`, `no`, `off`, `n`, `f`, `0` as value of this directive.
+```
+saml2.sp.slo = true 
+```
+
 - Modify `ckanext/saml2/config/sp_config.py` to suit your needs. The BASE variable at the top need reference  the domain of the service provider (i.e changed to http://catalog.data.gov or wherever CKAN is currently hosted).
 - Place your identity provider's `idp.xml` metadata here: `ckanext/saml2/config/`
 - The certificates need to be placed in this directory: `ckanext/saml2/config/pki` (they need to be named
