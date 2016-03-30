@@ -1,6 +1,8 @@
 import logging
 import uuid
 
+from saml2 import BINDING_HTTP_REDIRECT
+
 import pylons.config as config
 
 import ckan.plugins as p
@@ -242,21 +244,27 @@ class Saml2Plugin(p.SingletonPlugin):
 
         c.userobj = model.User.get(c.user)
 
+        # If account exists and is deleted, reactivate it. Assumes
+        # only the IAM driving the IdP will deprovision user accounts
+        # and wouldn't allow a user to authenticate for this app if
+        # they shouldn't have access.
+        if c.userobj is not None and c.userobj.is_deleted():
+            log.debug("Reactivating user")
+            c.userobj.activate()
+            c.userobj.commit()
+
         if c.userobj is None:
             # Create the user
             data_dict = {
                 'password': self.make_password(),
             }
-            # Force state to be active, reprovisioning previously
-            # deleted accounts. Assumes only the IAM driving the
-            # IdP will deprovision user accounts,
-            data_dict['state'] = 'active'
             self.update_data_dict(data_dict, self.user_mapping, saml_info)
             # Update the user schema to allow user creation
             user_schema = schema.default_user_schema()
             user_schema['id'] = [p.toolkit.get_validator('not_empty')]
             user_schema['name'] = [p.toolkit.get_validator('not_empty')]
 
+            log.debug("Creating user: {0}".format(data_dict))
             context = {'schema': user_schema, 'ignore_auth': True}
             user = p.toolkit.get_action('user_create')(context, data_dict)
             c.userobj = model.User.get(c.user)
@@ -354,12 +362,27 @@ class Saml2Plugin(p.SingletonPlugin):
             h.redirect_to(controller='home', action='index')
 
         subject_id = environ["repoze.who.identity"]['repoze.who.userid']
+        name_id = unserialise_nameid(subject_id)
         client = environ['repoze.who.plugins']["saml2auth"]
-        saml_logout = client.saml_client.global_logout(subject_id)
+
+        # Taken from saml2.client:global_logout but forces
+        # HTTP-Redirect binding.
+        entity_ids = client.saml_client.users.issuers_of_info(name_id)
+        saml_logout = client.saml_client.do_logout(name_id, entity_ids,
+                                                   reason='urn:oasis:names:tc:SAML:2.0:logout:user',
+                                                   expire=None, sign=True,
+                                                   expected_binding=BINDING_HTTP_REDIRECT,
+                                                   sign_alg="rsa-sha256", digest_alg="hmac-sha256")
+
         rem = environ['repoze.who.plugins'][client.rememberer_name]
         rem.forget(environ, subject_id)
-        # do the redirect the url is in the saml_logout
-        h.redirect_to(saml_logout[2][0][1])
+
+        # Redirect to send the logout request to the IdP, using the
+        # url in saml_logout. Assumes only one IdP will be returned.
+        for key in saml_logout.keys():
+            location = saml_logout[key][1]['headers'][0][1]
+            log.debug("IdP logout URL = {0}".format(location))
+            h.redirect_to(location)
 
     def abort(self, status_code, detail, headers, comment):
         """
@@ -405,10 +428,14 @@ class Saml2Controller(UserController):
             saml_req = p.toolkit.request.GET.get('SAMLRequest', '')
 
             if saml_req:
-                get = p.toolkit.request.GET
-                subject_id = environ["repoze.who.identity"]['repoze.who.userid']
-                headers, success = client.saml_client.do_http_redirect_logout(get, subject_id)
-                h.redirect_to(headers[0][1])
+                log.debug('Received SLO request from IdP')
+                # Ignore whatever the pysaml2 plugin did, which as of
+                # 4.0.0 seems broken, and do it ourselves
+                name_id = unserialise_nameid(environ.get('REMOTE_USER'))
+                response = client.saml_client.handle_logout_request(
+                    saml_req, name_id, BINDING_HTTP_REDIRECT)
+                location = client._handle_logout(response).location()
+                h.redirect_to(location, code=303)
             elif saml_resp:
              #   # fix the cert so that it is on multiple lines
              #   out = []
