@@ -344,7 +344,8 @@ class Saml2Plugin(p.SingletonPlugin):
         environ = p.toolkit.request.environ
 
         userobj = p.toolkit.c.userobj
-        if userobj and is_local_user(userobj):
+        sp_slo = p.toolkit.asbool(config.get('saml2.sp.slo', True))
+        if not sp_slo or userobj and is_local_user(userobj):
             plugins = environ['repoze.who.plugins']
             friendlyform_plugin = plugins.get('friendlyform')
             rememberer_name = friendlyform_plugin.rememberer_name
