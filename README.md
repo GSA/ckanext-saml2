@@ -24,9 +24,9 @@ saml2.organization_mapping =
     extras:organization_type~field_organization_type
 ```
 
-- SP-initiated SLO used by default, without any changes in config file. In order to make this more prominent you can add directive `saml2.sp.slo` in ckan .ini file. Values `true`, `yes`, `on`, `y`, `t`, `1` will be treated as true.In order to use default CKAN logout, set one of `false`, `no`, `off`, `n`, `f`, `0` as value of this directive.
+- The SP initiates SLO on CKAN logout by default. In order to make this more prominent you can add the directive `saml2.sp_initiates_slo` in ckan configuration file. Values `true`, `yes`, `on`, `y`, `t`, `1` are treated as true. To disable SP-initiated SLO and only logout from CKAN, set this directive to `false`, `no`, `off`, `n`, `f`, or `0`.
 ```
-saml2.sp.slo = true 
+saml2.sp_initiates_slo = true
 ```
 
 - Modify `ckanext/saml2/config/sp_config.py` to suit your needs. The BASE variable at the top need reference  the domain of the service provider (i.e changed to http://catalog.data.gov or wherever CKAN is currently hosted).
