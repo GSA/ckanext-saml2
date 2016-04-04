@@ -13,6 +13,7 @@ import ckan.model as model
 from saml2_model.permissions import AccessPermissions
 from access_permission import ACCESS_PERMISSIONS
 import ckan.logic.schema as schema
+from importlib import import_module
 from ckan.controllers.user import UserController
 from routes.mapper import SubMapper
 from saml2.ident import decode as unserialise_nameid
@@ -282,8 +283,8 @@ class Saml2Plugin(p.SingletonPlugin):
         get_org_roles = None
         try:
             module_name, function_name = org_conversion_config.split(':', 2)
-            module = __import__(module_name)
-            get_org_roles = module.getattr(module, function_name)
+            module = import_module(module_name)
+            get_org_roles = getattr(module, function_name)
         except Exception as e:
             log.error("Couldn't import saml2.org_converter: %s", e)
 
@@ -397,8 +398,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
         # Create or delete membership according to org_roles
         all_orgs = p.toolkit.get_action('organization_list')(context, {})
-        for org in all_orgs:
-            org_id = org['id']
+        for org_id in all_orgs:
             org = model.Group.get(org_id)
 
             # do nothing if the organisation doesn't exist
