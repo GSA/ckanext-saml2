@@ -274,22 +274,26 @@ class Saml2Plugin(p.SingletonPlugin):
         """Create or update the subject's user account and return the user
         object"""
 
+        data_dict = {}
+        user_schema = schema.default_update_user_schema()
+
         is_new_user = False
         userobj = model.User.get(user_name)
         if userobj is None:
             is_new_user = True
-        elif userobj.is_deleted():
-            # If account exists and is deleted, reactivate it. Assumes
-            # only the IAM driving the IdP will deprovision user
-            # accounts and wouldn't allow a user to authenticate for
-            # this app if they shouldn't have access.
-            log.debug("Reactivating user")
-            userobj.activate()
-            userobj.commit()
+            user_schema = schema.default_user_schema()
+        else:
+            if userobj.is_deleted():
+                # If account exists and is deleted, reactivate it. Assumes
+                # only the IAM driving the IdP will deprovision user
+                # accounts and wouldn't allow a user to authenticate for
+                # this app if they shouldn't have access.
+                log.debug("Reactivating user")
+                userobj.activate()
+                userobj.commit()
 
-        data_dict = {
-            'password': self.make_password(),
-        }
+            data_dict = p.toolkit.get_action('user_show')(
+                data_dict={'id': user_name, })
 
         # Merge SAML assertions into data_dict according to
         # user_mapping
@@ -298,17 +302,18 @@ class Saml2Plugin(p.SingletonPlugin):
                                             saml_info)
 
         # Remove validation of the values from id and name fields
-        user_schema = schema.default_user_schema()
         user_schema['id'] = [p.toolkit.get_validator('not_empty')]
         user_schema['name'] = [p.toolkit.get_validator('not_empty')]
         context = {'schema': user_schema, 'ignore_auth': True}
 
         if is_new_user:
-            log.debug("Creating user: {0}".format(data_dict))
+            log.debug("Creating user: %s", data_dict)
+            data_dict['password'] = self.make_password()
             p.toolkit.get_action('user_create')(context, data_dict)
             assign_default_role(context, user_name)
+
         elif update_user:
-            log.debug("Updating user: {0}".format(data_dict))
+            log.debug("Updating user: %s", data_dict)
             p.toolkit.get_action('user_update')(context, data_dict)
 
         # previous 'user' in repoze.who.identity check is broken.
@@ -370,17 +375,16 @@ class Saml2Plugin(p.SingletonPlugin):
                 # If list get first value
                 if isinstance(value, list):
                     value = value[0]
-                if not field.startswith('extras:') and data_dict.get(field) != value:
-                    data_dict[field] = value
-                    count_modified += 1
+                if not field.startswith('extras:'):
+                    if data_dict.get(field) != value:
+                        data_dict[field] = value
+                        count_modified += 1
                 else:
                     if 'extras' not in data_dict:
                         data_dict['extras'] = []
-                    extras_key = field[7:]
-                    if data_dict['extras'].get(extras_key) != value:
-                        data_dict['extras'].append(
-                            dict(key=extras_key, value=value))
-                        count_modified += 1
+                    data_dict['extras'].append(
+                        dict(key=field[7:], value=value))
+                    count_modified += 1
         return count_modified
 
     def login(self):
