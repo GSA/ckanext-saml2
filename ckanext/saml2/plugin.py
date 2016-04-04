@@ -274,8 +274,8 @@ class Saml2Plugin(p.SingletonPlugin):
         """Create or update the subject's user account and return the user
         object"""
 
+        is_new_user = False
         userobj = model.User.get(user_name)
-
         if userobj is None:
             is_new_user = True
         elif userobj.is_deleted():
