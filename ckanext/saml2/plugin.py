@@ -270,6 +270,44 @@ class Saml2Plugin(p.SingletonPlugin):
             c.user = None
             return
 
+        # Update user's organization memberships either via the
+        # configured saml2.org_converter function or the legacy GSA
+        # conversion
+        update_membership = False
+
+        org_roles = {}
+        # import the configured function for converting a SAML
+        # attribute to a dict for create_organization()
+        org_conversion_config = config.get('saml2.org_converter', None)
+        get_org_roles = None
+        try:
+            module_name, function_name = org_conversion_config.split(':', 2)
+            module = __import__(module_name)
+            get_org_roles = module.getattr(module, function_name)
+        except Exception as e:
+            log.error("Couldn't import saml2.org_converter: %s", e)
+
+        if get_org_roles is not None:
+            update_membership = True
+            org_roles = get_org_roles(saml_info)
+
+        elif 'name' in self.organization_mapping and self.organization_mapping['name'] in saml_info:
+            # Backwards compatibility for the original implementation
+            # at
+            # https://github.com/GSA/ckanext-saml2/blob/25521bdbb3728fe8b6532184b8b922d9fca4a0a0/ckanext/saml2/plugin.py
+            org = {}
+            # apply mapping
+            self.update_data_dict(org, self.organization_mapping, saml_info)
+            org_name = org['name']
+            org_roles[org_name] = {
+                'capacity': 'editor' if org['field_type_of_user'][0] == 'Publisher' else 'member',
+                'data': org,
+            }
+            update_membership = True
+
+        if update_membership:
+            self.update_organization_membership(org_roles)
+
     def _create_or_update_user(self, user_name, saml_info):
         """Create or update the subject's user account and return the user
         object"""
@@ -316,54 +354,75 @@ class Saml2Plugin(p.SingletonPlugin):
             log.debug("Updating user: %s", data_dict)
             p.toolkit.get_action('user_update')(context, data_dict)
 
-        # previous 'user' in repoze.who.identity check is broken.
-        # use referer check as an temp alternative.
-        if not p.toolkit.request.environ.get('HTTP_REFERER'):
-            if 'name' in self.organization_mapping and self.organization_mapping['name'] in saml_info:
-                self.create_organization(saml_info)
-
         return model.User.get(user_name)
 
-    def create_organization(self, saml_info):
-        """Create organization using mapping."""
-        org_name = saml_info[self.organization_mapping['name']][0]
-        org = model.Group.get(org_name)
+    def update_organization_membership(self, org_roles):
+        """Create organization using mapping.
+
+        org_roles is a dict whose keys are organization IDs, and
+        values are a dict containing 'capacity' and 'data', e.g.,
+
+        org_roles = {
+            'org1': {
+                'capacity': 'member',
+                'data': {
+                    'id': 'org1',
+                    'description': 'A fun organization',
+                },
+            },
+        }
+
+        """
+
+        create_orgs = p.toolkit.asbool(
+            config.get('saml2.create_missing_orgs', False))
 
         context = {'ignore_auth': True}
         site_user = p.toolkit.get_action('get_site_user')(context, {})
         c = p.toolkit.c
 
-        if not org:
-            context = {'user': site_user['name']}
-            data_dict = {
-            }
-            self.update_data_dict(data_dict, self.organization_mapping, saml_info)
-            org = p.toolkit.get_action('organization_create')(context, data_dict)
-            org = model.Group.get(org_name)
+        # Create missing organisations
+        if create_orgs:
+            for org_id in org_roles.keys():
+                org = model.Group.get(org_id)
 
-        # check if we are a member of the organization
-        data_dict = {
-            'id': org.id,
-            'type': 'user',
-        }
-        members = p.toolkit.get_action('member_list')(context, data_dict)
-        members = [member[0] for member in members]
-        if c.userobj.id not in members:
-            # add membership
+                if not org:
+                    context = {'user': site_user['name']}
+                    data_dict = {
+                        'id': org_id,
+                    }
+                    data_dict.update(org_roles[org_id].get('data', {}))
+                    p.toolkit.get_action('organization_create')(
+                        context, data_dict)
+
+        # Create or delete membership according to org_roles
+        all_orgs = p.toolkit.get_action('organization_list')(context, {})
+        for org in all_orgs:
+            org_id = org['id']
+            org = model.Group.get(org_id)
+
+            # do nothing if the organisation doesn't exist
+            if org is None:
+                continue
+
             member_dict = {
-                'id': org.id,
+                'id': org_id,
                 'object': c.userobj.id,
                 'object_type': 'user',
-                'capacity': 'editor'
-                    if saml_info['field_type_of_user'][0] == 'Publisher'
-                    else 'member',
             }
-            member_create_context = {
+            member_context = {
                 'user': site_user['name'],
                 'ignore_auth': True,
             }
-
-            p.toolkit.get_action('member_create')(member_create_context, member_dict)
+            if org_id in org_roles:
+                # add membership
+                member_dict['capacity'] = org_roles[org_id]['capacity']
+                p.toolkit.get_action('member_create')(
+                    member_context, member_dict)
+            else:
+                # delete membership
+                p.toolkit.get_action('member_delete')(
+                    member_context, member_dict)
 
     def update_data_dict(self, data_dict, mapping, saml_info):
         """Updates data_dict with values from saml_info according to
