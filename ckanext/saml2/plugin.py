@@ -149,6 +149,23 @@ def access_permission_show(context, data_dict):
             return perms.as_dict()
 
 
+def assign_default_role(context, user_name):
+    """Creates organization member roles according to saml2.default_org
+    and saml2.default_role or does nothing if those are not set.
+
+    """
+    user_org = config.get('saml2.default_org')
+    user_role = config.get('saml2.default_role')
+    if user_org and user_role:
+        member_dict = {
+            'id': user_org,
+            'username': user_name,
+            'role': user_role
+        }
+        p.toolkit.get_action('organization_member_create')(
+            context, member_dict)
+
+
 class Saml2Plugin(p.SingletonPlugin):
     """SAML2 plugin."""
 
@@ -242,50 +259,63 @@ class Saml2Plugin(p.SingletonPlugin):
             c.userobj = model.User.get(c.user)
             return
 
-        c.userobj = model.User.get(c.user)
+        try:
+            # Update the user account from the authentication response
+            # every time
+            c.userobj = self._create_or_update_user(c.user, saml_info)
+        except Exception as e:
+            log.error(
+                "Couldn't create or update user account ID:%s", c.user)
+            log.error("Error %s", e)
+            c.user = None
+            return
 
-        # If account exists and is deleted, reactivate it. Assumes
-        # only the IAM driving the IdP will deprovision user accounts
-        # and wouldn't allow a user to authenticate for this app if
-        # they shouldn't have access.
-        if c.userobj is not None and c.userobj.is_deleted():
+    def _create_or_update_user(self, user_name, saml_info):
+        """Create or update the subject's user account and return the user
+        object"""
+
+        userobj = model.User.get(user_name)
+
+        if userobj is None:
+            is_new_user = True
+        elif userobj.is_deleted():
+            # If account exists and is deleted, reactivate it. Assumes
+            # only the IAM driving the IdP will deprovision user
+            # accounts and wouldn't allow a user to authenticate for
+            # this app if they shouldn't have access.
             log.debug("Reactivating user")
-            c.userobj.activate()
-            c.userobj.commit()
+            userobj.activate()
+            userobj.commit()
 
-        if c.userobj is None:
-            # Create the user
-            data_dict = {
-                'password': self.make_password(),
-            }
-            self.update_data_dict(data_dict, self.user_mapping, saml_info)
-            # Update the user schema to allow user creation
-            user_schema = schema.default_user_schema()
-            user_schema['id'] = [p.toolkit.get_validator('not_empty')]
-            user_schema['name'] = [p.toolkit.get_validator('not_empty')]
+        data_dict = {
+            'password': self.make_password(),
+        }
 
+        # Merge SAML assertions into data_dict according to
+        # user_mapping
+        self.update_data_dict(data_dict, self.user_mapping, saml_info)
+
+        # Remove validation of the values from id and name fields
+        user_schema = schema.default_user_schema()
+        user_schema['id'] = [p.toolkit.get_validator('not_empty')]
+        user_schema['name'] = [p.toolkit.get_validator('not_empty')]
+        context = {'schema': user_schema, 'ignore_auth': True}
+
+        if is_new_user:
             log.debug("Creating user: {0}".format(data_dict))
-            context = {'schema': user_schema, 'ignore_auth': True}
-            user = p.toolkit.get_action('user_create')(context, data_dict)
-
-            user_org = config.get('saml2.default_org')
-            user_role = config.get('saml2.default_role')
-            if user_org and user_role:
-                member_dict = {
-                    'id': user_org,
-                    'username': user['name'],
-                    'role': user_role
-                }
-                p.toolkit.get_action('organization_member_create')(
-                    context, member_dict)
-
-            c.userobj = model.User.get(c.user)
+            p.toolkit.get_action('user_create')(context, data_dict)
+            assign_default_role(context, user_name)
+        else:
+            log.debug("Updating user: {0}".format(data_dict))
+            p.toolkit.get_action('user_update')(context, data_dict)
 
         # previous 'user' in repoze.who.identity check is broken.
         # use referer check as an temp alternative.
-        if not environ.get('HTTP_REFERER'):
+        if not p.toolkit.request.environ.get('HTTP_REFERER'):
             if 'name' in self.organization_mapping and self.organization_mapping['name'] in saml_info:
                 self.create_organization(saml_info)
+
+        return model.User.get(user_name)
 
     def create_organization(self, saml_info):
         """Create organization using mapping."""
