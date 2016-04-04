@@ -293,7 +293,9 @@ class Saml2Plugin(p.SingletonPlugin):
 
         # Merge SAML assertions into data_dict according to
         # user_mapping
-        self.update_data_dict(data_dict, self.user_mapping, saml_info)
+        update_user = self.update_data_dict(data_dict,
+                                            self.user_mapping,
+                                            saml_info)
 
         # Remove validation of the values from id and name fields
         user_schema = schema.default_user_schema()
@@ -305,7 +307,7 @@ class Saml2Plugin(p.SingletonPlugin):
             log.debug("Creating user: {0}".format(data_dict))
             p.toolkit.get_action('user_create')(context, data_dict)
             assign_default_role(context, user_name)
-        else:
+        elif update_user:
             log.debug("Updating user: {0}".format(data_dict))
             p.toolkit.get_action('user_update')(context, data_dict)
 
@@ -359,19 +361,27 @@ class Saml2Plugin(p.SingletonPlugin):
             p.toolkit.get_action('member_create')(member_create_context, member_dict)
 
     def update_data_dict(self, data_dict, mapping, saml_info):
-        """Dumb docstring."""
+        """Updates data_dict with values from saml_info according to
+        mapping. Returns the number of items changes."""
+        count_modified = 0
         for field in mapping:
             value = saml_info.get(mapping[field])
             if value:
                 # If list get first value
                 if isinstance(value, list):
                     value = value[0]
-                if not field.startswith('extras:'):
+                if not field.startswith('extras:') and data_dict.get(field) != value:
                     data_dict[field] = value
+                    count_modified += 1
                 else:
                     if 'extras' not in data_dict:
                         data_dict['extras'] = []
-                    data_dict['extras'].append(dict(key=field[7:], value=value))
+                    extras_key = field[7:]
+                    if data_dict['extras'].get(extras_key) != value:
+                        data_dict['extras'].append(
+                            dict(key=extras_key, value=value))
+                        count_modified += 1
+        return count_modified
 
     def login(self):
         """
