@@ -8,7 +8,7 @@ The following packages are required: memcached, repoze, m2crypto, xmlsec1, xmlse
 
 ####Setup Instructions:
 - To install this extension run the following commands (switch to python env first): then `pip install -r requirements.txt` & `python setup.py develop`
-- To enable the saml2 plugin added it to the `ckan.plugins` list in your ckan configuration file (i.e: `/etc/ckan/production.ini`)
+- Append `saml2` to the `ckan.plugins` list in your ckan configuration file (i.e: `/etc/ckan/production.ini`)
 - make sure that fields are mapped correctly in `production.ini` i.e:
 ```
 # saml2 config
@@ -18,10 +18,45 @@ saml2.user_mapping =
     id~uid
     name~name
 
+```
+- There are two ways to map organisational SAML attributes:
+```
+
+# 1. A custom function that take a single argument `saml_info`, dict
+# containing the SAML attributes. and returns a dict like the example
+# below. This is useful when users may have roles in multiple
+# organisations. Default: not set (None)
+#
+# {
+#     'org1': {
+#         'capacity': 'member',
+#         'data': {
+#             'id': 'org1',
+#             'description': 'A fun organization',
+#             ...
+#          },
+#     },
+#     ...
+# }
+
+saml2.organization_mapper = ckanext.myckan.plugin:mapping_function
+
+
+# 2. Specify a simple mapping from individual SAML attributes to
+# organisation schema fields. Note: `saml2.organization_mapping` must
+# be defined, with no value if it should not be used
+
 saml2.organization_mapping =
     name~field_unique_id
     title~field_organization
+    field_type_of_user~field_role
     extras:organization_type~field_organization_type
+```
+
+- By default, the SP doesn't create organisations specified in the SAML attributes but this can be configured:
+```
+# create organisations specified in SAML attributes that don't exist in CKAN? Default: False
+saml2.create_missing_orgs = True
 ```
 
 - The SP initiates SLO on CKAN logout by default. In order to make this more prominent you can add the directive `saml2.sp_initiates_slo` in ckan configuration file. Values `true`, `yes`, `on`, `y`, `t`, `1` are treated as true. To disable SP-initiated SLO and only logout from CKAN, set this directive to `false`, `no`, `off`, `n`, `f`, or `0`.
