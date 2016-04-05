@@ -279,14 +279,16 @@ class Saml2Plugin(p.SingletonPlugin):
         org_roles = {}
         # import the configured function for converting a SAML
         # attribute to a dict for create_organization()
-        org_conversion_config = config.get('saml2.org_converter', None)
+        org_mapper_config = config.get('saml2.organization_mapper', None)
         get_org_roles = None
-        try:
-            module_name, function_name = org_conversion_config.split(':', 2)
-            module = import_module(module_name)
-            get_org_roles = getattr(module, function_name)
-        except Exception as e:
-            log.error("Couldn't import saml2.org_converter: %s", e)
+        if org_mapper_config is not None:
+            try:
+                module_name, function_name = org_mapper_config.split(':', 2)
+                module = import_module(module_name)
+                get_org_roles = getattr(module, function_name)
+            except Exception as e:
+                log.error("Couldn't import saml2.organization_mapper: %s", org_mapper_config)
+                log.error("Error: %s", e)
 
         if get_org_roles is not None:
             update_membership = True
@@ -369,8 +371,10 @@ class Saml2Plugin(p.SingletonPlugin):
                 'data': {
                     'id': 'org1',
                     'description': 'A fun organization',
+                    ...
                 },
             },
+            ...
         }
 
         """
@@ -393,15 +397,20 @@ class Saml2Plugin(p.SingletonPlugin):
                         'id': org_id,
                     }
                     data_dict.update(org_roles[org_id].get('data', {}))
-                    p.toolkit.get_action('organization_create')(
-                        context, data_dict)
+                    try:
+                        p.toolkit.get_action('organization_create')(
+                            context, data_dict)
+                    except logic.ValidationError, e:
+                        log.error("Couldn't create organization: %s", org_id)
+                        log.error("Organization data was: %s", data_dict)
+                        log.error("Error: %s", e)
 
         # Create or delete membership according to org_roles
         all_orgs = p.toolkit.get_action('organization_list')(context, {})
         for org_id in all_orgs:
             org = model.Group.get(org_id)
 
-            # do nothing if the organisation doesn't exist
+            # skip to next if the organisation doesn't exist
             if org is None:
                 continue
 
