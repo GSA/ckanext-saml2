@@ -254,6 +254,7 @@ class Saml2Plugin(p.SingletonPlugin):
         # get the actual user info from the saml2auth client
         try:
             saml_info = environ["repoze.who.identity"]["user"]
+            c.user = saml_info["user"][0]
         except KeyError:
             # This is a request in an existing session so no need to provision
             # an account, set c.userobj and return
