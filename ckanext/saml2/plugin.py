@@ -170,7 +170,8 @@ class Saml2Plugin(p.SingletonPlugin):
     def update_config(self, config):
         """Update environment config."""
         p.toolkit.add_resource('fanstatic', 'ckanext-saml2')
-        p.toolkit.add_ckan_admin_tab(config, 'manage_permissions', 'Permissions')
+        if p.toolkit.check_ckan_version(min_version='2.4'):
+            p.toolkit.add_ckan_admin_tab(config, 'manage_permissions', 'Permissions')
         p.toolkit.add_template_directory(config, 'templates')
 
     def make_mapping(self, key, config):
