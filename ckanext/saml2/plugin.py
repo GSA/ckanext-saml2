@@ -239,7 +239,7 @@ class Saml2Plugin(p.SingletonPlugin):
         user = environ.get('REMOTE_USER', '')
         c.user = unserialise_nameid(user).text
         if not c.user:
-           log.info("Couldn't decode nameid, giving up")
+            log.info("Couldn't decode nameid, giving up")
             return
 
         log.debug("REMOTE_USER = \"{0}\"".format(c.user))
