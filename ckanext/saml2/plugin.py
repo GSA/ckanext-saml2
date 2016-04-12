@@ -243,11 +243,11 @@ class Saml2Plugin(p.SingletonPlugin):
                 return
         except KeyError:
             return
-        user = environ.get('REMOTE_USER', None)
-        if user is None:
+        name_id = environ.get('REMOTE_USER', None)
+        if name_id is None:
             return
 
-        c.user = unserialise_nameid(user).text
+        c.user = unserialise_nameid(name_id).text
         log.debug("REMOTE_USER = \"{0}\"".format(c.user))
         log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
 
