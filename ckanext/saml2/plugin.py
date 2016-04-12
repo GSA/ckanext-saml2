@@ -237,18 +237,12 @@ class Saml2Plugin(p.SingletonPlugin):
         c = p.toolkit.c
         environ = p.toolkit.request.environ
 
-        # Don't continue if this user wasn't authenticated by SAML2
-        try:
-            if not isinstance(environ["repoze.who.identity"]["authenticator"], SAML2Plugin):
-                log.debug("User not authenticated by SAML2, giving up")
-                return
-        except KeyError:
-            return
-        user = environ.get('REMOTE_USER', None)
-        if user is None:
+        user = environ.get('REMOTE_USER', '')
+        c.user = unserialise_nameid(user).text
+        if not c.user:
+            log.info("Couldn't decode nameid, giving up")
             return
 
-        c.user = unserialise_nameid(user).text
         log.debug("REMOTE_USER = \"{0}\"".format(c.user))
         log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
 
