@@ -188,7 +188,8 @@ class Saml2Plugin(p.SingletonPlugin):
     def update_config(self, config):
         """Update environment config."""
         p.toolkit.add_resource('fanstatic', 'ckanext-saml2')
-        p.toolkit.add_ckan_admin_tab(config, 'manage_permissions', 'Permissions')
+        if p.toolkit.check_ckan_version(min_version='2.4'):
+            p.toolkit.add_ckan_admin_tab(config, 'manage_permissions', 'Permissions')
         p.toolkit.add_template_directory(config, 'templates')
 
     def make_mapping(self, key, config):
@@ -236,18 +237,12 @@ class Saml2Plugin(p.SingletonPlugin):
         c = p.toolkit.c
         environ = p.toolkit.request.environ
 
-        # Don't continue if this user wasn't authenticated by SAML2
-        try:
-            if not isinstance(environ["repoze.who.identity"]["authenticator"], SAML2Plugin):
-                log.debug("User not authenticated by SAML2, giving up")
-                return
-        except KeyError:
-            return
-        name_id = environ.get('REMOTE_USER', None)
-        if name_id is None:
+        name_id = environ.get('REMOTE_USER', '')
+        c.user = unserialise_nameid(name_id).text
+        if not c.user:
+            log.info("Couldn't decode nameid, giving up")
             return
 
-        c.user = unserialise_nameid(name_id).text
         log.debug("REMOTE_USER = \"{0}\"".format(c.user))
         log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
 
