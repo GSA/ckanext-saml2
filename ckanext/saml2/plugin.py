@@ -237,8 +237,8 @@ class Saml2Plugin(p.SingletonPlugin):
         c = p.toolkit.c
         environ = p.toolkit.request.environ
 
-        user = environ.get('REMOTE_USER', '')
-        c.user = unserialise_nameid(user).text
+        name_id = environ.get('REMOTE_USER', '')
+        c.user = unserialise_nameid(name_id).text
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
             return
@@ -254,12 +254,14 @@ class Saml2Plugin(p.SingletonPlugin):
             # This is a request in an existing session so no need to provision
             # an account, set c.userobj and return
             c.userobj = model.User.get(c.user)
+            c.user = c.userobj.name
             return
 
         try:
             # Update the user account from the authentication response
             # every time
             c.userobj = self._create_or_update_user(c.user, saml_info)
+            c.user = c.userobj.name
         except Exception as e:
             log.error(
                 "Couldn't create or update user account ID:%s", c.user)
