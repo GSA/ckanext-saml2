@@ -73,3 +73,5 @@ saml2.sp_initiates_slo = true
 - copy `ckanext/saml2/config/who.ini` to your ckan's config folder i.e: `/etc/ckan/who.ini`
 - make sure that your webserver can write to `/var/www/sp.log`
 - Add `saml2.default_org` and `saml2.default_role` - that values will be assigned to newly created users as organization and role in this organization accordingly
+- In order to enable native login and registration as default option, add `saml2.enable_native_login = true|false` directive to config file.
+- `saml2.login_form_sso_text = BUTTON_TEXT` allows you to controll label of SSO button at login page(default: 'Login with SSO').
