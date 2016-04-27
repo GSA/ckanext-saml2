@@ -13,6 +13,7 @@ import ckan.model as model
 from saml2_model.permissions import AccessPermissions
 from access_permission import ACCESS_PERMISSIONS
 import ckan.logic.schema as schema
+from importlib import import_module
 from ckan.controllers.user import UserController
 from routes.mapper import SubMapper
 from saml2.ident import decode as unserialise_nameid
@@ -149,6 +150,23 @@ def access_permission_show(context, data_dict):
             return perms.as_dict()
 
 
+def assign_default_role(context, user_name):
+    """Creates organization member roles according to saml2.default_org
+    and saml2.default_role or does nothing if those are not set.
+
+    """
+    user_org = config.get('saml2.default_org')
+    user_role = config.get('saml2.default_role')
+    if user_org and user_role:
+        member_dict = {
+            'id': user_org,
+            'username': user_name,
+            'role': user_role
+        }
+        p.toolkit.get_action('organization_member_create')(
+            context, member_dict)
+
+
 class Saml2Plugin(p.SingletonPlugin):
     """SAML2 plugin."""
 
@@ -170,7 +188,8 @@ class Saml2Plugin(p.SingletonPlugin):
     def update_config(self, config):
         """Update environment config."""
         p.toolkit.add_resource('fanstatic', 'ckanext-saml2')
-        p.toolkit.add_ckan_admin_tab(config, 'manage_permissions', 'Permissions')
+        if p.toolkit.check_ckan_version(min_version='2.4'):
+            p.toolkit.add_ckan_admin_tab(config, 'manage_permissions', 'Permissions')
         p.toolkit.add_template_directory(config, 'templates')
 
     def make_mapping(self, key, config):
@@ -218,18 +237,12 @@ class Saml2Plugin(p.SingletonPlugin):
         c = p.toolkit.c
         environ = p.toolkit.request.environ
 
-        # Don't continue if this user wasn't authenticated by SAML2
-        try:
-            if not isinstance(environ["repoze.who.identity"]["authenticator"], SAML2Plugin):
-                log.debug("User not authenticated by SAML2, giving up")
-                return
-        except KeyError:
-            return
-        user = environ.get('REMOTE_USER', None)
-        if user is None:
+        name_id = environ.get('REMOTE_USER', '')
+        c.user = unserialise_nameid(name_id).text
+        if not c.user:
+            log.info("Couldn't decode nameid, giving up")
             return
 
-        c.user = unserialise_nameid(user).text
         log.debug("REMOTE_USER = \"{0}\"".format(c.user))
         log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
 
@@ -240,96 +253,187 @@ class Saml2Plugin(p.SingletonPlugin):
             # This is a request in an existing session so no need to provision
             # an account, set c.userobj and return
             c.userobj = model.User.get(c.user)
+            c.user = c.userobj.name
             return
 
-        c.userobj = model.User.get(c.user)
+        try:
+            # Update the user account from the authentication response
+            # every time
+            c.userobj = self._create_or_update_user(c.user, saml_info)
+            c.user = c.userobj.name
+        except Exception as e:
+            log.error(
+                "Couldn't create or update user account ID:%s", c.user)
+            log.error("Error %s", e)
+            c.user = None
+            return
 
-        # If account exists and is deleted, reactivate it. Assumes
-        # only the IAM driving the IdP will deprovision user accounts
-        # and wouldn't allow a user to authenticate for this app if
-        # they shouldn't have access.
-        if c.userobj is not None and c.userobj.is_deleted():
-            log.debug("Reactivating user")
-            c.userobj.activate()
-            c.userobj.commit()
+        # Update user's organization memberships either via the
+        # configured saml2.org_converter function or the legacy GSA
+        # conversion
+        update_membership = False
 
-        if c.userobj is None:
-            # Create the user
-            data_dict = {
-                'password': self.make_password(),
+        org_roles = {}
+        # import the configured function for converting a SAML
+        # attribute to a dict for create_organization()
+        org_mapper_config = config.get('saml2.organization_mapper', None)
+        get_org_roles = None
+        if org_mapper_config is not None:
+            try:
+                module_name, function_name = org_mapper_config.split(':', 2)
+                module = import_module(module_name)
+                get_org_roles = getattr(module, function_name)
+            except Exception as e:
+                log.error("Couldn't import saml2.organization_mapper: %s", org_mapper_config)
+                log.error("Error: %s", e)
+
+        if get_org_roles is not None:
+            update_membership = True
+            org_roles = get_org_roles(saml_info)
+
+        elif 'name' in self.organization_mapping and self.organization_mapping['name'] in saml_info:
+            # Backwards compatibility for the original implementation
+            # at
+            # https://github.com/GSA/ckanext-saml2/blob/25521bdbb3728fe8b6532184b8b922d9fca4a0a0/ckanext/saml2/plugin.py
+            org = {}
+            # apply mapping
+            self.update_data_dict(org, self.organization_mapping, saml_info)
+            org_name = org['name']
+            org_roles[org_name] = {
+                'capacity': 'editor' if org['field_type_of_user'][0] == 'Publisher' else 'member',
+                'data': org,
             }
-            self.update_data_dict(data_dict, self.user_mapping, saml_info)
-            # Update the user schema to allow user creation
+            update_membership = True
+
+        if update_membership:
+            self.update_organization_membership(org_roles)
+
+    def _create_or_update_user(self, user_name, saml_info):
+        """Create or update the subject's user account and return the user
+        object"""
+
+        data_dict = {}
+        user_schema = schema.default_update_user_schema()
+
+        is_new_user = False
+        userobj = model.User.get(user_name)
+        if userobj is None:
+            is_new_user = True
             user_schema = schema.default_user_schema()
-            user_schema['id'] = [p.toolkit.get_validator('not_empty')]
-            user_schema['name'] = [p.toolkit.get_validator('not_empty')]
+        else:
+            if userobj.is_deleted():
+                # If account exists and is deleted, reactivate it. Assumes
+                # only the IAM driving the IdP will deprovision user
+                # accounts and wouldn't allow a user to authenticate for
+                # this app if they shouldn't have access.
+                log.debug("Reactivating user")
+                userobj.activate()
+                userobj.commit()
 
-            log.debug("Creating user: {0}".format(data_dict))
-            context = {'schema': user_schema, 'ignore_auth': True}
-            user = p.toolkit.get_action('user_create')(context, data_dict)
+            data_dict = p.toolkit.get_action('user_show')(
+                data_dict={'id': user_name, })
 
-            user_org = config.get('saml2.default_org')
-            user_role = config.get('saml2.default_role')
-            if user_org and user_role:
-                member_dict = {
-                    'id': user_org,
-                    'username': user['name'],
-                    'role': user_role
-                }
-                p.toolkit.get_action('organization_member_create')(
-                    context, member_dict)
+        # Merge SAML assertions into data_dict according to
+        # user_mapping
+        update_user = self.update_data_dict(data_dict,
+                                            self.user_mapping,
+                                            saml_info)
 
-            c.userobj = model.User.get(c.user)
+        # Remove validation of the values from id and name fields
+        user_schema['id'] = [p.toolkit.get_validator('not_empty')]
+        user_schema['name'] = [p.toolkit.get_validator('not_empty')]
+        context = {'schema': user_schema, 'ignore_auth': True}
 
-        # previous 'user' in repoze.who.identity check is broken.
-        # use referer check as an temp alternative.
-        if not environ.get('HTTP_REFERER'):
-            if 'name' in self.organization_mapping and self.organization_mapping['name'] in saml_info:
-                self.create_organization(saml_info)
+        if is_new_user:
+            log.debug("Creating user: %s", data_dict)
+            data_dict['password'] = self.make_password()
+            p.toolkit.get_action('user_create')(context, data_dict)
+            assign_default_role(context, user_name)
 
-    def create_organization(self, saml_info):
-        """Create organization using mapping."""
-        org_name = saml_info[self.organization_mapping['name']][0]
-        org = model.Group.get(org_name)
+        elif update_user:
+            log.debug("Updating user: %s", data_dict)
+            p.toolkit.get_action('user_update')(context, data_dict)
+
+        return model.User.get(user_name)
+
+    def update_organization_membership(self, org_roles):
+        """Create organization using mapping.
+
+        org_roles is a dict whose keys are organization IDs, and
+        values are a dict containing 'capacity' and 'data', e.g.,
+
+        org_roles = {
+            'org1': {
+                'capacity': 'member',
+                'data': {
+                    'id': 'org1',
+                    'description': 'A fun organization',
+                    ...
+                },
+            },
+            ...
+        }
+
+        """
+
+        create_orgs = p.toolkit.asbool(
+            config.get('saml2.create_missing_orgs', False))
 
         context = {'ignore_auth': True}
         site_user = p.toolkit.get_action('get_site_user')(context, {})
         c = p.toolkit.c
 
-        if not org:
-            context = {'user': site_user['name']}
-            data_dict = {
-            }
-            self.update_data_dict(data_dict, self.organization_mapping, saml_info)
-            org = p.toolkit.get_action('organization_create')(context, data_dict)
-            org = model.Group.get(org_name)
+        # Create missing organisations
+        if create_orgs:
+            for org_id in org_roles.keys():
+                org = model.Group.get(org_id)
 
-        # check if we are a member of the organization
-        data_dict = {
-            'id': org.id,
-            'type': 'user',
-        }
-        members = p.toolkit.get_action('member_list')(context, data_dict)
-        members = [member[0] for member in members]
-        if c.userobj.id not in members:
-            # add membership
+                if not org:
+                    context = {'user': site_user['name']}
+                    data_dict = {
+                        'id': org_id,
+                    }
+                    data_dict.update(org_roles[org_id].get('data', {}))
+                    try:
+                        p.toolkit.get_action('organization_create')(
+                            context, data_dict)
+                    except logic.ValidationError, e:
+                        log.error("Couldn't create organization: %s", org_id)
+                        log.error("Organization data was: %s", data_dict)
+                        log.error("Error: %s", e)
+
+        # Create or delete membership according to org_roles
+        all_orgs = p.toolkit.get_action('organization_list')(context, {})
+        for org_id in all_orgs:
+            org = model.Group.get(org_id)
+
+            # skip to next if the organisation doesn't exist
+            if org is None:
+                continue
+
             member_dict = {
-                'id': org.id,
+                'id': org_id,
                 'object': c.userobj.id,
                 'object_type': 'user',
-                'capacity': 'editor'
-                    if saml_info['field_type_of_user'][0] == 'Publisher'
-                    else 'member',
             }
-            member_create_context = {
+            member_context = {
                 'user': site_user['name'],
                 'ignore_auth': True,
             }
-
-            p.toolkit.get_action('member_create')(member_create_context, member_dict)
+            if org_id in org_roles:
+                # add membership
+                member_dict['capacity'] = org_roles[org_id]['capacity']
+                p.toolkit.get_action('member_create')(
+                    member_context, member_dict)
+            else:
+                # delete membership
+                p.toolkit.get_action('member_delete')(
+                    member_context, member_dict)
 
     def update_data_dict(self, data_dict, mapping, saml_info):
-        """Dumb docstring."""
+        """Updates data_dict with values from saml_info according to
+        mapping. Returns the number of items changes."""
+        count_modified = 0
         for field in mapping:
             value = saml_info.get(mapping[field])
             if value:
@@ -337,11 +441,16 @@ class Saml2Plugin(p.SingletonPlugin):
                 if isinstance(value, list):
                     value = value[0]
                 if not field.startswith('extras:'):
-                    data_dict[field] = value
+                    if data_dict.get(field) != value:
+                        data_dict[field] = value
+                        count_modified += 1
                 else:
                     if 'extras' not in data_dict:
                         data_dict['extras'] = []
-                    data_dict['extras'].append(dict(key=field[7:], value=value))
+                    data_dict['extras'].append(
+                        dict(key=field[7:], value=value))
+                    count_modified += 1
+        return count_modified
 
     def login(self):
         """
