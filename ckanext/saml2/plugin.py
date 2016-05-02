@@ -73,8 +73,13 @@ def user_reset(context, data_dict):
 def request_reset(context, data_dict):
     """Deny user reset."""
     msg = p.toolkit._('Users cannot reset passwords.')
+    method = p.toolkit.request.method
+    username = p.toolkit.request.params.get('user', '')
     if NATIVE_LOGIN_ENABLED:
-        return logic.auth.get.request_reset(context, data_dict)
+        if method == 'GET' or (
+                method == 'POST' and
+                is_local_user(model.User.get(username)) is not False):
+            return logic.auth.get.request_reset(context, data_dict)
     return _no_permissions(context, msg)
 
 
