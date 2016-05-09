@@ -1,7 +1,7 @@
 ckanext-saml2
 ==============
 
-SAML2 Athentication extension
+SAML2 Authentication extension
 
 #### Requirements:
 The following packages are required: memcached, repoze, m2crypto, xmlsec1, xmlsec1-openssl, swig
