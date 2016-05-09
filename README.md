@@ -1,6 +1,5 @@
 ckanext-saml2
 ==============
-
 SAML2 Authentication extension
 
 Requirements:
