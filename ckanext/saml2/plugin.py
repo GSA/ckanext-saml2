@@ -21,6 +21,7 @@ from saml2.s2repoze.plugins.sp import SAML2Plugin
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
+NATIVE_LOGIN_ENABLED = p.toolkit.asbool(config.get('saml2.enable_native_login'))
 
 
 def _no_permissions(context, msg):
@@ -29,9 +30,12 @@ def _no_permissions(context, msg):
 
 
 @logic.auth_sysadmins_check
+@logic.auth_allow_anonymous_access
 def user_create(context, data_dict):
     """Deny user creation."""
     msg = p.toolkit._('Users cannot be created.')
+    if NATIVE_LOGIN_ENABLED:
+        return logic.auth.create.user_create(context, data_dict)
     return _no_permissions(context, msg)
 
 
@@ -46,24 +50,36 @@ def user_update(context, data_dict):
         id = logic.get_or_bust(data_dict, 'id')
     modified_user = model.User.get(id)
 
-    if is_local_user(modified_user) and (
-      current_user.sysadmin or modified_user.id == current_user.id):
+    if is_local_user(modified_user):
+        if current_user.sysadmin:
             return {'success': True}
+        return logic.auth.update.user_update(context, data_dict)
     msg = p.toolkit._('Users cannot be edited.')
     return _no_permissions(context, msg)
 
 
 @logic.auth_sysadmins_check
+@logic.auth_allow_anonymous_access
 def user_reset(context, data_dict):
     """Deny user reset."""
     msg = p.toolkit._('Users cannot reset passwords.')
+    if NATIVE_LOGIN_ENABLED:
+        return logic.auth.get.user_reset(context, data_dict)
     return _no_permissions(context, msg)
 
 
 @logic.auth_sysadmins_check
+@logic.auth_allow_anonymous_access
 def request_reset(context, data_dict):
     """Deny user reset."""
     msg = p.toolkit._('Users cannot reset passwords.')
+    method = p.toolkit.request.method
+    username = p.toolkit.request.params.get('user', '')
+    if NATIVE_LOGIN_ENABLED:
+        if method == 'GET' or (
+                method == 'POST' and
+                is_local_user(model.User.get(username)) is not False):
+            return logic.auth.get.request_reset(context, data_dict)
     return _no_permissions(context, msg)
 
 
@@ -465,6 +481,10 @@ class Saml2Plugin(p.SingletonPlugin):
                     return
             except Exception:
                 pass
+            if NATIVE_LOGIN_ENABLED:
+                p.toolkit.c.sso_button_text = config.get('saml2.login_form_sso_text')
+                if p.toolkit.request.params.get('type') != 'sso':
+                    return
             return base.abort(401, p.toolkit._('Login required!'))
         h.redirect_to(controller='user', action='dashboard')
 
