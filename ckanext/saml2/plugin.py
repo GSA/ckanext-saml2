@@ -1,6 +1,6 @@
 import logging
 import uuid
-
+from ckan.common import _
 from saml2 import BINDING_HTTP_REDIRECT
 
 import pylons.config as config
@@ -535,6 +535,10 @@ class Saml2Plugin(p.SingletonPlugin):
         """
         if (status_code == 401 and
            p.toolkit.request.environ['PATH_INFO'] != '/user/login'):
+                if not p.toolkit.c.user:
+                    if NATIVE_LOGIN_ENABLED:
+                        h.flash_error(_('Requires authentication'))
+                    h.redirect_to('login', came_from=h.full_current_url())
                 h.redirect_to('saml2_unauthorized')
         return (status_code, detail, headers, comment)
 
