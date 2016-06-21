@@ -10,6 +10,7 @@ import ckan.lib.base as base
 import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
+import urlparse
 from saml2_model.permissions import AccessPermissions
 from access_permission import ACCESS_PERMISSIONS
 import ckan.logic.schema as schema
@@ -183,6 +184,27 @@ def assign_default_role(context, user_name):
             context, member_dict)
 
 
+def get_came_from(relay_state):
+    """Returns the original URL requested by the user before
+    authentication, parsed from the SAML2 RelayState
+    """
+    rs_parsed = urlparse.urlparse(relay_state)
+    came_from = urlparse.parse_qs(rs_parsed.query).get('came_from', None)
+    if came_from is None:
+        # No came_from param was supplied to /user/login
+        return None
+    cf_parsed = urlparse.urlparse(came_from[0])
+    # strip scheme and host to prevent redirection to other domains
+    came_from = urlparse.urlunparse(('',
+                                     '',
+                                     cf_parsed.path,
+                                     cf_parsed.params,
+                                     cf_parsed.query,
+                                     cf_parsed.fragment))
+    log.debug('came_from = %s', came_from)
+    return came_from
+
+
 class Saml2Plugin(p.SingletonPlugin):
     """SAML2 plugin."""
 
@@ -323,6 +345,18 @@ class Saml2Plugin(p.SingletonPlugin):
 
         if update_membership:
             self.update_organization_membership(org_roles)
+
+        # Redirect the user to the URL they requested before
+        # authentication. Ideally this would happen in the controller
+        # of the assertion consumer service but in lieu of one
+        # existing this location seems reliable.
+        request = p.toolkit.request
+        if request.method == 'POST':
+            relay_state = request.POST.get('RelayState', None)
+            if relay_state:
+                came_from = get_came_from(relay_state)
+                if came_from:
+                    h.redirect_to(came_from)
 
     def _create_or_update_user(self, user_name, saml_info):
         """Create or update the subject's user account and return the user
