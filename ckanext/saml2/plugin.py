@@ -523,7 +523,7 @@ class Saml2Plugin(p.SingletonPlugin):
                     if came_from:
                         c.came_from = came_from
                     return
-            return base.abort(401, p.toolkit._('Login required!'))
+            return base.abort(401)
         h.redirect_to(controller='user', action='dashboard')
 
     def logout(self):
