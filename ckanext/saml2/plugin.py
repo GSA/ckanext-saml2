@@ -202,7 +202,7 @@ def get_came_from(relay_state):
                                      cf_parsed.query,
                                      cf_parsed.fragment))
     log.debug('came_from = %s', came_from)
-    return came_from
+    return came_from.encode('utf8')
 
 
 class Saml2Plugin(p.SingletonPlugin):
