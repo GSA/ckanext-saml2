@@ -2,7 +2,7 @@ import logging
 import uuid
 
 from saml2 import BINDING_HTTP_REDIRECT
-
+from ckan.common import _
 import pylons.config as config
 
 import ckan.plugins as p
@@ -10,6 +10,7 @@ import ckan.lib.base as base
 import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
+import urlparse
 from saml2_model.permissions import AccessPermissions
 from access_permission import ACCESS_PERMISSIONS
 import ckan.logic.schema as schema
@@ -183,6 +184,27 @@ def assign_default_role(context, user_name):
             context, member_dict)
 
 
+def get_came_from(relay_state):
+    """Returns the original URL requested by the user before
+    authentication, parsed from the SAML2 RelayState
+    """
+    rs_parsed = urlparse.urlparse(relay_state)
+    came_from = urlparse.parse_qs(rs_parsed.query).get('came_from', None)
+    if came_from is None:
+        # No came_from param was supplied to /user/login
+        return None
+    cf_parsed = urlparse.urlparse(came_from[0])
+    # strip scheme and host to prevent redirection to other domains
+    came_from = urlparse.urlunparse(('',
+                                     '',
+                                     cf_parsed.path,
+                                     cf_parsed.params,
+                                     cf_parsed.query,
+                                     cf_parsed.fragment))
+    log.debug('came_from = %s', came_from)
+    return came_from.encode('utf8')
+
+
 class Saml2Plugin(p.SingletonPlugin):
     """SAML2 plugin."""
 
@@ -323,6 +345,18 @@ class Saml2Plugin(p.SingletonPlugin):
 
         if update_membership:
             self.update_organization_membership(org_roles)
+
+        # Redirect the user to the URL they requested before
+        # authentication. Ideally this would happen in the controller
+        # of the assertion consumer service but in lieu of one
+        # existing this location seems reliable.
+        request = p.toolkit.request
+        if request.method == 'POST':
+            relay_state = request.POST.get('RelayState', None)
+            if relay_state:
+                came_from = get_came_from(relay_state)
+                if came_from:
+                    h.redirect_to(came_from)
 
     def _create_or_update_user(self, user_name, saml_info):
         """Create or update the subject's user account and return the user
@@ -475,17 +509,21 @@ class Saml2Plugin(p.SingletonPlugin):
         We can be here either because we are requesting a login (no user)
         or we have just been logged in.
         """
-        if not p.toolkit.c.user:
+        c = p.toolkit.c
+        if not c.user:
             try:
                 if p.toolkit.request.environ['pylons.routes_dict']['action'] == 'staff_login':
                     return
             except Exception:
                 pass
             if NATIVE_LOGIN_ENABLED:
-                p.toolkit.c.sso_button_text = config.get('saml2.login_form_sso_text')
+                c.sso_button_text = config.get('saml2.login_form_sso_text')
                 if p.toolkit.request.params.get('type') != 'sso':
+                    came_from = p.toolkit.request.params.get('came_from', None)
+                    if came_from:
+                        c.came_from = came_from
                     return
-            return base.abort(401, p.toolkit._('Login required!'))
+            return base.abort(401)
         h.redirect_to(controller='user', action='dashboard')
 
     def logout(self):
@@ -534,6 +572,10 @@ class Saml2Plugin(p.SingletonPlugin):
         """
         if (status_code == 401 and
            p.toolkit.request.environ['PATH_INFO'] != '/user/login'):
+                if not p.toolkit.c.user:
+                    if NATIVE_LOGIN_ENABLED:
+                        h.flash_error(_('Requires authentication'))
+                    h.redirect_to('login', came_from=h.full_current_url())
                 h.redirect_to('saml2_unauthorized')
         return (status_code, detail, headers, comment)
 
