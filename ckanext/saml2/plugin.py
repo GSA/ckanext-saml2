@@ -509,15 +509,19 @@ class Saml2Plugin(p.SingletonPlugin):
         We can be here either because we are requesting a login (no user)
         or we have just been logged in.
         """
-        if not p.toolkit.c.user:
+        c = p.toolkit.c
+        if not c.user:
             try:
                 if p.toolkit.request.environ['pylons.routes_dict']['action'] == 'staff_login':
                     return
             except Exception:
                 pass
             if NATIVE_LOGIN_ENABLED:
-                p.toolkit.c.sso_button_text = config.get('saml2.login_form_sso_text')
+                c.sso_button_text = config.get('saml2.login_form_sso_text')
                 if p.toolkit.request.params.get('type') != 'sso':
+                    came_from = p.toolkit.request.params.get('came_from', None)
+                    if came_from:
+                        c.came_from = came_from
                     return
             return base.abort(401, p.toolkit._('Login required!'))
         h.redirect_to(controller='user', action='dashboard')
