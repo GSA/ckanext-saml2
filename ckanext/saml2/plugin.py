@@ -2,7 +2,7 @@ import logging
 import uuid
 
 from saml2 import BINDING_HTTP_REDIRECT
-
+from ckan.common import _
 import pylons.config as config
 
 import ckan.plugins as p
@@ -10,6 +10,7 @@ import ckan.lib.base as base
 import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
+import urlparse
 from saml2_model.permissions import AccessPermissions
 from access_permission import ACCESS_PERMISSIONS
 import ckan.logic.schema as schema
@@ -21,6 +22,7 @@ from saml2.s2repoze.plugins.sp import SAML2Plugin
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
+NATIVE_LOGIN_ENABLED = p.toolkit.asbool(config.get('saml2.enable_native_login'))
 
 
 def _no_permissions(context, msg):
@@ -29,9 +31,12 @@ def _no_permissions(context, msg):
 
 
 @logic.auth_sysadmins_check
+@logic.auth_allow_anonymous_access
 def user_create(context, data_dict):
     """Deny user creation."""
     msg = p.toolkit._('Users cannot be created.')
+    if NATIVE_LOGIN_ENABLED:
+        return logic.auth.create.user_create(context, data_dict)
     return _no_permissions(context, msg)
 
 
@@ -46,24 +51,36 @@ def user_update(context, data_dict):
         id = logic.get_or_bust(data_dict, 'id')
     modified_user = model.User.get(id)
 
-    if is_local_user(modified_user) and (
-      current_user.sysadmin or modified_user.id == current_user.id):
+    if is_local_user(modified_user):
+        if current_user.sysadmin:
             return {'success': True}
+        return logic.auth.update.user_update(context, data_dict)
     msg = p.toolkit._('Users cannot be edited.')
     return _no_permissions(context, msg)
 
 
 @logic.auth_sysadmins_check
+@logic.auth_allow_anonymous_access
 def user_reset(context, data_dict):
     """Deny user reset."""
     msg = p.toolkit._('Users cannot reset passwords.')
+    if NATIVE_LOGIN_ENABLED:
+        return logic.auth.get.user_reset(context, data_dict)
     return _no_permissions(context, msg)
 
 
 @logic.auth_sysadmins_check
+@logic.auth_allow_anonymous_access
 def request_reset(context, data_dict):
     """Deny user reset."""
     msg = p.toolkit._('Users cannot reset passwords.')
+    method = p.toolkit.request.method
+    username = p.toolkit.request.params.get('user', '')
+    if NATIVE_LOGIN_ENABLED:
+        if method == 'GET' or (
+                method == 'POST' and
+                is_local_user(model.User.get(username)) is not False):
+            return logic.auth.get.request_reset(context, data_dict)
     return _no_permissions(context, msg)
 
 
@@ -165,6 +182,27 @@ def assign_default_role(context, user_name):
         }
         p.toolkit.get_action('organization_member_create')(
             context, member_dict)
+
+
+def get_came_from(relay_state):
+    """Returns the original URL requested by the user before
+    authentication, parsed from the SAML2 RelayState
+    """
+    rs_parsed = urlparse.urlparse(relay_state)
+    came_from = urlparse.parse_qs(rs_parsed.query).get('came_from', None)
+    if came_from is None:
+        # No came_from param was supplied to /user/login
+        return None
+    cf_parsed = urlparse.urlparse(came_from[0])
+    # strip scheme and host to prevent redirection to other domains
+    came_from = urlparse.urlunparse(('',
+                                     '',
+                                     cf_parsed.path,
+                                     cf_parsed.params,
+                                     cf_parsed.query,
+                                     cf_parsed.fragment))
+    log.debug('came_from = %s', came_from)
+    return came_from.encode('utf8')
 
 
 class Saml2Plugin(p.SingletonPlugin):
@@ -307,6 +345,18 @@ class Saml2Plugin(p.SingletonPlugin):
 
         if update_membership:
             self.update_organization_membership(org_roles)
+
+        # Redirect the user to the URL they requested before
+        # authentication. Ideally this would happen in the controller
+        # of the assertion consumer service but in lieu of one
+        # existing this location seems reliable.
+        request = p.toolkit.request
+        if request.method == 'POST':
+            relay_state = request.POST.get('RelayState', None)
+            if relay_state:
+                came_from = get_came_from(relay_state)
+                if came_from:
+                    h.redirect_to(came_from)
 
     def _create_or_update_user(self, user_name, saml_info):
         """Create or update the subject's user account and return the user
@@ -459,13 +509,21 @@ class Saml2Plugin(p.SingletonPlugin):
         We can be here either because we are requesting a login (no user)
         or we have just been logged in.
         """
-        if not p.toolkit.c.user:
+        c = p.toolkit.c
+        if not c.user:
             try:
                 if p.toolkit.request.environ['pylons.routes_dict']['action'] == 'staff_login':
                     return
             except Exception:
                 pass
-            return base.abort(401, p.toolkit._('Login required!'))
+            if NATIVE_LOGIN_ENABLED:
+                c.sso_button_text = config.get('saml2.login_form_sso_text')
+                if p.toolkit.request.params.get('type') != 'sso':
+                    came_from = p.toolkit.request.params.get('came_from', None)
+                    if came_from:
+                        c.came_from = came_from
+                    return
+            return base.abort(401)
         h.redirect_to(controller='user', action='dashboard')
 
     def logout(self):
@@ -514,6 +572,10 @@ class Saml2Plugin(p.SingletonPlugin):
         """
         if (status_code == 401 and
            p.toolkit.request.environ['PATH_INFO'] != '/user/login'):
+                if not p.toolkit.c.user:
+                    if NATIVE_LOGIN_ENABLED:
+                        h.flash_error(_('Requires authentication'))
+                    h.redirect_to('login', came_from=h.full_current_url())
                 h.redirect_to('saml2_unauthorized')
         return (status_code, detail, headers, comment)
 
