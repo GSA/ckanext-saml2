@@ -225,7 +225,7 @@ class Saml2Plugin(p.SingletonPlugin):
         rem = environ['repoze.who.plugins'][client.rememberer_name]
         rem.forget(environ, subject_id)
         # do the redirect the url is in the saml_logout
-        h.redirect_to(saml_logout[2][0][1])
+        h.redirect_to(saml_logout.values()[0]['headers'][0][1])
 
     def abort(self, status_code, detail, headers, comment):
         # HTTP Status 401 causes a login redirect.  We need to prevent this
