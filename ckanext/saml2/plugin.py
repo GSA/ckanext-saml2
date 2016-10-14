@@ -313,12 +313,13 @@ class Saml2Plugin(p.SingletonPlugin):
         # get the actual user info from the saml2auth client
         try:
             saml_info = environ["repoze.who.identity"]["user"]
+
         except KeyError:
             # This is a request in an existing session so no need to provision
             # an account, set c.userobj and return
             c.userobj = model.User.get(c.user)
             if c.userobj is not None:
-                c.user = c.userobj.name
+                c.user = saml_info['maxemail'][0]
             return
 
         try:
@@ -598,25 +599,10 @@ class Saml2Plugin(p.SingletonPlugin):
         subject_id = environ["repoze.who.identity"]['repoze.who.userid']
         name_id = unserialise_nameid(subject_id)
         client = environ['repoze.who.plugins']["saml2auth"]
-
-        # Taken from saml2.client:global_logout but forces
-        # HTTP-Redirect binding.
-        entity_ids = client.saml_client.users.issuers_of_info(name_id)
-        saml_logout = client.saml_client.do_logout(name_id, entity_ids,
-                                                   reason='urn:oasis:names:tc:SAML:2.0:logout:user',
-                                                   expire=None, sign=True,
-                                                   expected_binding=BINDING_HTTP_REDIRECT,
-                                                   sign_alg="rsa-sha256", digest_alg="hmac-sha256")
-
         rem = environ['repoze.who.plugins'][client.rememberer_name]
         rem.forget(environ, subject_id)
-
-        # Redirect to send the logout request to the IdP, using the
-        # url in saml_logout. Assumes only one IdP will be returned.
-        for key in saml_logout.keys():
-            location = saml_logout[key][1]['headers'][0][1]
-            log.debug("IdP logout URL = {0}".format(location))
-            h.redirect_to(location)
+        # MAX does not support slo, let us fake one.
+        h.redirect_to('/slo?SAMLResponse=1')
 
     def abort(self, status_code, detail, headers, comment):
         """
