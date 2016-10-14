@@ -129,7 +129,7 @@ class Saml2Plugin(p.SingletonPlugin):
                 delete_cookies()
                 h.redirect_to(controller='user', action='logged_out')
 
-            c.user = saml_info['name'][0]
+            c.user = saml_info['maxemail'][0]
             c.userobj = model.User.get(c.user)
 
             if c.userobj is None:
@@ -221,11 +221,10 @@ class Saml2Plugin(p.SingletonPlugin):
         environ = p.toolkit.request.environ
         subject_id = environ["repoze.who.identity"]['repoze.who.userid']
         client = environ['repoze.who.plugins']["saml2auth"]
-        saml_logout = client.saml_client.global_logout(subject_id)
         rem = environ['repoze.who.plugins'][client.rememberer_name]
         rem.forget(environ, subject_id)
-        # do the redirect the url is in the saml_logout
-        h.redirect_to(saml_logout[2][0][1])
+        # MAX does not support slo, let us fake one.
+        h.redirect_to('/slo?SAMLResponse=1')
 
     def abort(self, status_code, detail, headers, comment):
         # HTTP Status 401 causes a login redirect.  We need to prevent this
