@@ -316,6 +316,10 @@ class Saml2Plugin(p.SingletonPlugin):
         except KeyError:
             # This is a request in an existing session so no need to provision
             # an account, set c.userobj and return
+
+            # Not sure if there is a better way to map the user id
+            c.user = saml_info['maxemail'][0]
+            log.debug('saml_info.maxemail=%s', c.user)
             c.userobj = model.User.get(c.user)
             if c.userobj is not None:
                 c.user = c.userobj.name
