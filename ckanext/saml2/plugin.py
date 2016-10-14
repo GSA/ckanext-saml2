@@ -697,7 +697,11 @@ class Saml2Controller(UserController):
              #       pass
 
                 delete_cookies()
-                h.redirect_to(controller='user', action='logged_out')
+                # TODO make this a generic config option
+                if config.get('saml2.max_redirect_slo'):
+                    h.redirect_to(config.get('saml2.max_redirect_slo'))
+                else:
+                    h.redirect_to(controller='user', action='logged_out')
 
     def staff_login(self):
         """Default login page for staff members."""
