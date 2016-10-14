@@ -2,6 +2,7 @@ import logging
 import uuid
 
 from saml2 import BINDING_HTTP_REDIRECT
+from pylons import config
 
 import ckan.plugins as p
 import ckan.lib.base as base
@@ -286,4 +287,7 @@ class Saml2Controller(base.BaseController):
              ##       pass
 
                 delete_cookies()
-                h.redirect_to(controller='user', action='logged_out')
+                if config.get('saml2.max_redirect_slo'):
+                    h.redirect_to(config.get('saml2.max_redirect_slo'))
+                else:
+                    h.redirect_to(controller='user', action='logged_out')
