@@ -564,20 +564,14 @@ class Saml2Controller(UserController):
         """SAML magic."""
         environ = p.toolkit.request.environ
         # so here I might get either a LogoutResponse or a LogoutRequest
-        client = environ['repoze.who.plugins']['saml2auth']
         if 'QUERY_STRING' in environ:
             saml_resp = p.toolkit.request.GET.get('SAMLResponse', '')
             saml_req = p.toolkit.request.GET.get('SAMLRequest', '')
 
             if saml_req:
                 log.debug('Received SLO request from IdP')
-                # Ignore whatever the pysaml2 plugin did, which as of
-                # 4.0.0 seems broken, and do it ourselves
-                name_id = unserialise_nameid(environ.get('REMOTE_USER'))
-                response = client.saml_client.handle_logout_request(
-                    saml_req, name_id, BINDING_HTTP_REDIRECT)
-                location = client._handle_logout(response).location()
-                h.redirect_to(location, code=303)
+                # pysaml2 takes care of everything here via its
+                # repoze.who plugin
             elif saml_resp:
              #   # fix the cert so that it is on multiple lines
              #   out = []

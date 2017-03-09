@@ -75,3 +75,8 @@ saml2.sp_initiates_slo = true
 - Add `saml2.default_org` and `saml2.default_role` - that values will be assigned to newly created users as organization and role in this organization accordingly
 - In order to enable native login and registration as default option, add `saml2.enable_native_login = true|false` directive to config file.
 - `saml2.login_form_sso_text = BUTTON_TEXT` allows you to controll label of SSO button at login page(default: 'Login with SSO').
+
+
+
+#### Known Issues
+- The only binding supported for sending logout reponses for an IdP-initiated global logout is HTTP Redirect. As of v4.4.0 pysaml2's behaviour is to use a Post binding if the SP receives a logout request via either a Post or Redirect binding but it subsequently raises an exception. A workaround is modify the local copy of the IdP metadata by removing the element that declares support for the Post binding for logout, e.g., `<md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" ... />`, which will cause pysaml2 to revert to a Redirect binding.
