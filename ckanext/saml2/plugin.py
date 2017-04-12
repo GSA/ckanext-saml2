@@ -11,8 +11,6 @@ import ckan.logic as logic
 import ckan.lib.helpers as h
 import ckan.model as model
 import urlparse
-from saml2_model.permissions import AccessPermissions
-from access_permission import ACCESS_PERMISSIONS
 import ckan.logic.schema as schema
 from importlib import import_module
 from ckan.controllers.user import UserController
@@ -89,13 +87,6 @@ def user_delete(context, data_dict):
     # import pprint
     user = context['auth_user_obj']
     msg = p.toolkit._('Users cannot remove users')
-    try:
-        u_perm = ACCESS_PERMISSIONS.get_user_permissions(user.id)
-        if u_perm and u_perm.has_permission(DELETE_USERS_PERMISSION):
-            return {'success': True}
-    except:
-        pass
-    # if ACCESS_PERMISSIONS.get_user_permissions()
     return _no_permissions(context, msg)
 
 rememberer_name = None
@@ -147,26 +138,6 @@ def is_local_user(userobj):
             lambda d: email.endswith(d), checked_domains)) == is_local_check
 
 
-@logic.side_effect_free
-def access_permission_show(context, data_dict):
-    """
-    Return access permissions of user.
-
-    :param id: the id or name of the user
-    :type id: string
-    :rtype: dictionary
-    """
-    model = context['model']
-    context['session'] = model.Session
-    id = logic.get_or_bust(data_dict, 'id')
-
-    user = model.User.get(id)
-    if user:
-        perms = ACCESS_PERMISSIONS.get_user_permissions(user.id)
-        if perms:
-            return perms.as_dict()
-
-
 def assign_default_role(context, user_name):
     """Creates organization member roles according to saml2.default_org
     and saml2.default_role or does nothing if those are not set.
@@ -213,21 +184,10 @@ class Saml2Plugin(p.SingletonPlugin):
     p.implements(p.IAuthFunctions, inherit=True)
     p.implements(p.IConfigurer, inherit=True)
     p.implements(p.IConfigurable)
-    p.implements(p.IActions)
-
-    ACCESS_PERMISSIONS.create_permission(DELETE_USERS_PERMISSION)
-
-    def get_actions(self):
-        """Return new api actions."""
-        return {
-            'access_permission_show': access_permission_show
-        }
 
     def update_config(self, config):
         """Update environment config."""
         p.toolkit.add_resource('fanstatic', 'ckanext-saml2')
-        if p.toolkit.check_ckan_version(min_version='2.4'):
-            p.toolkit.add_ckan_admin_tab(config, 'manage_permissions', 'Permissions')
         p.toolkit.add_template_directory(config, 'templates')
 
     def make_mapping(self, key, config):
@@ -253,8 +213,6 @@ class Saml2Plugin(p.SingletonPlugin):
                       action='saml2_unauthorized')
             m.connect('saml2_slo', '/slo', action='slo')
             m.connect('staff_login', '/service/login', action='staff_login')
-            m.connect('manage_permissions', '/ckan-admin/manage-permissions',
-                      action='manage_permissions', ckan_icon="unlock-alt")
         return map
 
     def make_password(self):
@@ -606,20 +564,14 @@ class Saml2Controller(UserController):
         """SAML magic."""
         environ = p.toolkit.request.environ
         # so here I might get either a LogoutResponse or a LogoutRequest
-        client = environ['repoze.who.plugins']['saml2auth']
         if 'QUERY_STRING' in environ:
             saml_resp = p.toolkit.request.GET.get('SAMLResponse', '')
             saml_req = p.toolkit.request.GET.get('SAMLRequest', '')
 
             if saml_req:
                 log.debug('Received SLO request from IdP')
-                # Ignore whatever the pysaml2 plugin did, which as of
-                # 4.0.0 seems broken, and do it ourselves
-                name_id = unserialise_nameid(environ.get('REMOTE_USER'))
-                response = client.saml_client.handle_logout_request(
-                    saml_req, name_id, BINDING_HTTP_REDIRECT)
-                location = client._handle_logout(response).location()
-                h.redirect_to(location, code=303)
+                # pysaml2 takes care of everything here via its
+                # repoze.who plugin
             elif saml_resp:
              #   # fix the cert so that it is on multiple lines
              #   out = []
@@ -645,33 +597,3 @@ class Saml2Controller(UserController):
     def staff_login(self):
         """Default login page for staff members."""
         return self.login()
-
-    def manage_permissions(self):
-        """Admin page."""
-        context = {'model': model,
-                   'user': p.toolkit.c.user,
-                   'auth_user_obj': p.toolkit.c.userobj}
-        try:
-            logic.check_access('sysadmin', context, {})
-        except logic.NotAuthorized:
-            code, msg = 401, 'Not authorized to see this page'
-            base.abort(code, p.toolkit._(msg))
-
-        data = p.toolkit.request.POST
-        if 'save' in data:
-            new_perms = data.getall('perm')
-            username = data.get('username')
-            user = model.User.get(username)
-            if user:
-                permissions = ACCESS_PERMISSIONS.get_user_permissions(
-                    user.id)
-                if not permissions:
-                    permissions = AccessPermissions(owner_id=user.id)
-                    model.Session.add(permissions)
-                permissions.set_permissions(new_perms)
-                model.Session.commit()
-            return base.redirect(h.full_current_url())
-
-        vars = {'perm_list': ACCESS_PERMISSIONS}
-        return base.render('admin/manage_permissions.html',
-                           extra_vars=vars)
