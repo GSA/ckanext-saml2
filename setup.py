@@ -27,5 +27,7 @@ setup(
         [ckan.plugins]
 	# Add plugins here, eg
 	saml2=ckanext.saml2.plugin:Saml2Plugin
+	[paste.paster_command]
+	saml2=ckanext.saml2.command:Saml2Command
 	""",
 )
