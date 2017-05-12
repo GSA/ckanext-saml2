@@ -17,6 +17,8 @@ from ckan.controllers.user import UserController
 from routes.mapper import SubMapper
 from saml2.ident import decode as unserialise_nameid
 from saml2.s2repoze.plugins.sp import SAML2Plugin
+from ckan.logic.action.create import _get_random_username_from_email
+from ckanext.saml2.model.user_sso_gen import UserSsoGen
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
@@ -223,6 +225,7 @@ class Saml2Plugin(p.SingletonPlugin):
         return out
 
     def identify(self):
+        print 'Hello from def identify(self):'
         """
         Work around saml2 authorization.
 
@@ -237,6 +240,9 @@ class Saml2Plugin(p.SingletonPlugin):
         c.user = unserialise_nameid(name_id).text
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
+            print '!!! c.user = {0}'.format(c.user)
+            saml_info = {'tenancy': [u'ambulance-service-nsw = member'], 'displayName': [u'Gaynell Johnson'], 'email': [u'Gaynell.Johnson@test.com.au'], 'id': [u'GBB01297@gen.nsw.gov.au']}
+            c.userobj = self._create_or_update_user(c.user, saml_info)
             return
 
         log.debug("REMOTE_USER = \"{0}\"".format(c.user))
@@ -263,7 +269,7 @@ class Saml2Plugin(p.SingletonPlugin):
             log.error("Error %s", e)
             c.user = None
             return
-
+        print 'c.user after identify = {0}'.format(c.user)
         # Update user's organization memberships either via the
         # configured saml2.org_converter function or the legacy GSA
         # conversion
@@ -317,16 +323,22 @@ class Saml2Plugin(p.SingletonPlugin):
                     h.redirect_to(came_from)
 
     def _create_or_update_user(self, user_name, saml_info):
+        print 'Hello from def _create_or_update_user(self, user_name, saml_info):'
+        log.debug('@@@@saml_info = %s, email[0] = %s, user_name = %s', saml_info, saml_info['email'][0], user_name)
+        # SAML_INFO = "{'tenancy': [u'ambulance-service-nsw = member'], 'displayName': [u'Gaynell Johnson'], 'email': [u'Gaynell.Johnson@test.com.au'], 'id': [u'GBB01297@gen.nsw.gov.au']}"
         """Create or update the subject's user account and return the user
         object"""
 
         data_dict = {}
         user_schema = schema.default_update_user_schema()
 
-        is_new_user = False
-        userobj = model.User.get(user_name)
+        is_new_user = True
+        if user_name is not None:
+            userobj = model.User.get(user_name)
+        else:
+            userobj = None
         if userobj is None:
-            is_new_user = True
+            is_new_user = False
             user_schema = schema.default_user_schema()
         else:
             if userobj.is_deleted():
@@ -353,16 +365,23 @@ class Saml2Plugin(p.SingletonPlugin):
         context = {'schema': user_schema, 'ignore_auth': True}
 
         if is_new_user:
+            user_name = _get_random_username_from_email(saml_info['email'][0])
+            gen_id = saml_info['id'][0]
+            gen = gen_id.split('@')[0]
+            data_dict['name'] = user_name
             log.debug("Creating user: %s", data_dict)
             data_dict['password'] = self.make_password()
-            p.toolkit.get_action('user_create')(context, data_dict)
+            new_user = p.toolkit.get_action('user_create')(context, data_dict)
             assign_default_role(context, user_name)
-
+            model.Session.add(UserSsoGen(id=new_user['id'],
+                                         gen=gen,
+                                         user_name=user_name))
+            model.Session.commit()
         elif update_user:
             log.debug("Updating user: %s", data_dict)
-            p.toolkit.get_action('user_update')(context, data_dict)
+            # p.toolkit.get_action('user_update')(context, data_dict)
 
-        return model.User.get(user_name)
+        return model.User.get(user_name) if user_name is not None else []
 
     def update_organization_membership(self, org_roles):
         """Create organization using mapping.
@@ -461,6 +480,7 @@ class Saml2Plugin(p.SingletonPlugin):
         return count_modified
 
     def login(self):
+        print 'Hello from def login(self):'
         """
         Login definition.
 
@@ -468,6 +488,7 @@ class Saml2Plugin(p.SingletonPlugin):
         or we have just been logged in.
         """
         c = p.toolkit.c
+        print 'c.user = {0}'.format(c.user)
         if not c.user:
             try:
                 if p.toolkit.request.environ['pylons.routes_dict']['action'] == 'staff_login':

@@ -1,7 +1,8 @@
 from ckan.lib.cli import CkanCommand
 import paste.script
 import logging
-import ckanext.saml2.model as model
+from ckanext.saml2.model.user_sso_gen import setupdb, dropdb
+
 
 log = logging.getLogger('ckanext.saml2')
 
@@ -27,23 +28,15 @@ class Saml2Command(CkanCommand):
 
         if not len(self.args):
             print self.usage
-        elif self.args[0] == 'init':
-            self._init()
         elif self.args[0] == 'drop':
             self._drop()
         elif self.args[0] == 'create':
             self._create()
 
-    def _init(self):
-        self._drop()
-        self._create()
-        log.debug("DB tables are reinitialized")
-
     def _drop(self):
-        print 'Hello from drop()'
-        model.drop_tables()
+        dropdb()
         log.debug("DB tables are removed")
 
     def _create(self):
-        model.create_tables()
+        setupdb()
         log.debug("DB tables are setup")
