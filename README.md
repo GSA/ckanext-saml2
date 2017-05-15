@@ -19,6 +19,20 @@ saml2.user_mapping =
     name~name
 
 ```
+
+Create custom database table::
+
+    paster saml2 create -c config_file
+
+Drop custom database table::
+
+    paster saml2 drop -c config_file
+
+Delete user via API using gen instead id::
+
+    api/3/action/saml2_user_delete with data_dict = {'id': 'user GEN'}
+
+
 - There are two ways to map organisational SAML attributes:
 ```
 

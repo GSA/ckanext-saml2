@@ -19,6 +19,7 @@ from saml2.ident import decode as unserialise_nameid
 from saml2.s2repoze.plugins.sp import SAML2Plugin
 from ckan.logic.action.create import _get_random_username_from_email
 from ckanext.saml2.model.user_sso_gen import UserSsoGen
+from sqlalchemy.sql.expression import or_
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
@@ -178,6 +179,36 @@ def get_came_from(relay_state):
     return came_from.encode('utf8')
 
 
+def saml2_get_user_gen(id=None, return_gen=False):
+    query = model.Session.query(UserSsoGen).filter(or_(
+                                    UserSsoGen.user_name == id,
+                                    UserSsoGen.gen == id,
+                                    UserSsoGen.id == id))
+    if return_gen:
+        query = query.first()
+        if query is not None:
+            return query.gen if query.gen is not None else None
+    else:
+        return query if query is not None else None
+
+
+def saml_delete_user_from_saml2_sso_gen_db(query):
+    if query is not None:
+        query.delete()
+        model.Session.commit()
+
+
+def saml2_user_delete(context, data_dict):
+    query = saml2_get_user_gen(data_dict['id'])
+    gen = query.first()
+    if gen is not None:
+        data_dict['id'] = gen.id
+    else:
+        raise logic.NotFound('User "{id}" was not found.'.format(id=data_dict['id']))
+    saml_delete_user_from_saml2_sso_gen_db(query)
+    logic.get_action('user_delete')(context, data_dict)
+
+
 class Saml2Plugin(p.SingletonPlugin):
     """SAML2 plugin."""
 
@@ -186,6 +217,8 @@ class Saml2Plugin(p.SingletonPlugin):
     p.implements(p.IAuthFunctions, inherit=True)
     p.implements(p.IConfigurer, inherit=True)
     p.implements(p.IConfigurable)
+    p.implements(p.ITemplateHelpers)
+    p.implements(p.IActions)
 
     def update_config(self, config):
         """Update environment config."""
@@ -215,6 +248,7 @@ class Saml2Plugin(p.SingletonPlugin):
                       action='saml2_unauthorized')
             m.connect('saml2_slo', '/slo', action='slo')
             m.connect('staff_login', '/service/login', action='staff_login')
+            m.connect('saml2_user_delete', '/user/delete/{id}', action='delete')
         return map
 
     def make_password(self):
@@ -225,7 +259,6 @@ class Saml2Plugin(p.SingletonPlugin):
         return out
 
     def identify(self):
-        print 'Hello from def identify(self):'
         """
         Work around saml2 authorization.
 
@@ -240,9 +273,6 @@ class Saml2Plugin(p.SingletonPlugin):
         c.user = unserialise_nameid(name_id).text
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
-            print '!!! c.user = {0}'.format(c.user)
-            saml_info = {'tenancy': [u'ambulance-service-nsw = member'], 'displayName': [u'Gaynell Johnson'], 'email': [u'Gaynell.Johnson@test.com.au'], 'id': [u'GBB01297@gen.nsw.gov.au']}
-            c.userobj = self._create_or_update_user(c.user, saml_info)
             return
 
         log.debug("REMOTE_USER = \"{0}\"".format(c.user))
@@ -269,7 +299,6 @@ class Saml2Plugin(p.SingletonPlugin):
             log.error("Error %s", e)
             c.user = None
             return
-        print 'c.user after identify = {0}'.format(c.user)
         # Update user's organization memberships either via the
         # configured saml2.org_converter function or the legacy GSA
         # conversion
@@ -323,22 +352,16 @@ class Saml2Plugin(p.SingletonPlugin):
                     h.redirect_to(came_from)
 
     def _create_or_update_user(self, user_name, saml_info):
-        print 'Hello from def _create_or_update_user(self, user_name, saml_info):'
-        log.debug('@@@@saml_info = %s, email[0] = %s, user_name = %s', saml_info, saml_info['email'][0], user_name)
-        # SAML_INFO = "{'tenancy': [u'ambulance-service-nsw = member'], 'displayName': [u'Gaynell Johnson'], 'email': [u'Gaynell.Johnson@test.com.au'], 'id': [u'GBB01297@gen.nsw.gov.au']}"
         """Create or update the subject's user account and return the user
         object"""
 
         data_dict = {}
         user_schema = schema.default_update_user_schema()
 
-        is_new_user = True
-        if user_name is not None:
-            userobj = model.User.get(user_name)
-        else:
-            userobj = None
+        is_new_user = False
+        userobj = model.User.get(user_name)
         if userobj is None:
-            is_new_user = False
+            is_new_user = True
             user_schema = schema.default_user_schema()
         else:
             if userobj.is_deleted():
@@ -352,7 +375,6 @@ class Saml2Plugin(p.SingletonPlugin):
 
             data_dict = p.toolkit.get_action('user_show')(
                 data_dict={'id': user_name, })
-
         # Merge SAML assertions into data_dict according to
         # user_mapping
         update_user = self.update_data_dict(data_dict,
@@ -366,8 +388,8 @@ class Saml2Plugin(p.SingletonPlugin):
 
         if is_new_user:
             user_name = _get_random_username_from_email(saml_info['email'][0])
-            gen_id = saml_info['id'][0]
-            gen = gen_id.split('@')[0]
+            gen = saml_info['id'][0]
+            data_dict['id'] = unicode(uuid.uuid4())
             data_dict['name'] = user_name
             log.debug("Creating user: %s", data_dict)
             data_dict['password'] = self.make_password()
@@ -379,8 +401,7 @@ class Saml2Plugin(p.SingletonPlugin):
             model.Session.commit()
         elif update_user:
             log.debug("Updating user: %s", data_dict)
-            # p.toolkit.get_action('user_update')(context, data_dict)
-
+            p.toolkit.get_action('user_update')(context, data_dict)
         return model.User.get(user_name) if user_name is not None else []
 
     def update_organization_membership(self, org_roles):
@@ -468,7 +489,7 @@ class Saml2Plugin(p.SingletonPlugin):
                 if isinstance(value, list):
                     value = value[0]
                 if not field.startswith('extras:'):
-                    if data_dict.get(field) != value:
+                    if data_dict.get(field) != value and field != 'name' and field != 'id':
                         data_dict[field] = value
                         count_modified += 1
                 else:
@@ -480,7 +501,6 @@ class Saml2Plugin(p.SingletonPlugin):
         return count_modified
 
     def login(self):
-        print 'Hello from def login(self):'
         """
         Login definition.
 
@@ -488,7 +508,6 @@ class Saml2Plugin(p.SingletonPlugin):
         or we have just been logged in.
         """
         c = p.toolkit.c
-        print 'c.user = {0}'.format(c.user)
         if not c.user:
             try:
                 if p.toolkit.request.environ['pylons.routes_dict']['action'] == 'staff_login':
@@ -568,6 +587,16 @@ class Saml2Plugin(p.SingletonPlugin):
             'request_reset': request_reset,
         }
 
+    def get_helpers(self):
+        return {
+            'saml2_get_user_gen': saml2_get_user_gen
+        }
+
+    def get_actions(self):
+        return {
+            'saml2_user_delete': saml2_user_delete
+        }
+
 
 class Saml2Controller(UserController):
     """SAML2 Controller."""
@@ -618,3 +647,8 @@ class Saml2Controller(UserController):
     def staff_login(self):
         """Default login page for staff members."""
         return self.login()
+
+    def delete(self, id):
+        gen = saml2_get_user_gen(id)
+        saml_delete_user_from_saml2_sso_gen_db(gen)
+        return super(Saml2Controller, self).delete(id)

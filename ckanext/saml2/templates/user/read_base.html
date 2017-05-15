@@ -1,0 +1,40 @@
+{% ckan_extends %}
+
+{% block user_info %}
+    <div class="info">
+        <dl>
+            {% if c.is_myself or h.check_access('sysadmin') %}
+                <dt>{{ _('GEN: ') }}</dt>
+                <dd>{{ h.saml2_get_user_gen(user.name, true) }}</dd>
+            {% endif %}
+        </dl>
+        <dl>
+            {% if user.name.startswith('http://') or user.name.startswith('https://') %}
+                <dt>{{ _('Open ID') }}</dt>
+                <dd>{{ user.name|urlize(25) }}{# Be great if this just showed the domain #}</dd>
+            {% else %}
+                <dt>{{ _('Username') }}</dt>
+                <dd>{{ user.name }}</dd>
+            {% endif %}
+        </dl>
+        {% if c.is_myself %}
+            <dl>
+                <dt>{{ _('Email') }} <span class="label" title="{{ _('This means only you can see this') }}">{{ _('Private') }}</span></dt>
+                <dd>{{ user.email }}</dd>
+            </dl>
+        {% endif %}
+        <dl>
+            <dt>{{ _('Member Since') }}</dt>
+            <dd>{{ h.render_datetime(user.created) }}</dd>
+        </dl>
+        <dl>
+            <dt>{{ _('State') }}</dt>
+            <dd>{{ _(user.state) }}</dd>
+        </dl>
+        {% if c.is_myself %}
+            <dl>
+            <dt class="key">{{ _('API Key') }} <span class="label" title="{{ _('This means only you can see this') }}">{{ _('Private') }}</span></dt>
+            <dd class="value"><code>{{ user.apikey }}</code></dd>
+            </dl>
+        {% endif %}
+{% endblock %}
