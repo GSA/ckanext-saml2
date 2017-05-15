@@ -299,6 +299,7 @@ class Saml2Plugin(p.SingletonPlugin):
             log.error("Error %s", e)
             c.user = None
             return
+
         # Update user's organization memberships either via the
         # configured saml2.org_converter function or the legacy GSA
         # conversion
@@ -375,6 +376,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
             data_dict = p.toolkit.get_action('user_show')(
                 data_dict={'id': user_name, })
+
         # Merge SAML assertions into data_dict according to
         # user_mapping
         update_user = self.update_data_dict(data_dict,

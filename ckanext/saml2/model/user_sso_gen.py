@@ -2,9 +2,8 @@ from sqlalchemy import Column, UnicodeText, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 import ckan.model as model
 
-Base = declarative_base(bind=model.meta.engine)
+Base = declarative_base()
 metadata = Base.metadata
-metadata.bind = model.meta.engine
 
 
 class UserSsoGen(Base):
