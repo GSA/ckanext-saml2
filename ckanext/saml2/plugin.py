@@ -491,7 +491,7 @@ class Saml2Plugin(p.SingletonPlugin):
                 if isinstance(value, list):
                     value = value[0]
                 if not field.startswith('extras:'):
-                    if data_dict.get(field) != value and field != 'name' and field != 'id':
+                    if data_dict.get(field) != value:
                         data_dict[field] = value
                         count_modified += 1
                 else:
