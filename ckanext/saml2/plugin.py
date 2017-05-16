@@ -179,17 +179,19 @@ def get_came_from(relay_state):
     return came_from.encode('utf8')
 
 
-def saml2_get_user_gen(id=None, return_gen=False):
+def saml2_get_user_gen(id=None, return_gen=False, return_user_id=False):
     query = model.Session.query(UserSsoGen).filter(or_(
                                     UserSsoGen.user_name == id,
                                     UserSsoGen.gen == id,
                                     UserSsoGen.id == id))
+    if return_user_id:
+        query = query.first()
+        return query if query is None else query.id
     if return_gen:
         query = query.first()
-        if query is not None:
-            return query.gen if query.gen is not None else None
+        return query if query is None else query.gen
     else:
-        return query if query is not None else None
+        return query
 
 
 def saml_delete_user_from_saml2_sso_gen_db(query):
@@ -199,14 +201,21 @@ def saml_delete_user_from_saml2_sso_gen_db(query):
 
 
 def saml2_user_delete(context, data_dict):
+    print 'context = {0}, data_dict = {1}'.format(context, data_dict)
+    logic.check_access('user_delete')(context, data_dict)
     query = saml2_get_user_gen(data_dict['id'])
-    gen = query.first()
-    if gen is not None:
-        data_dict['id'] = gen.id
+    if query is not None:
+        gen = query.first()
+        if gen is not None:
+            data_dict['id'] = gen.id
+        else:
+            raise logic.NotFound('GEN "{id}" was not found.'.format(
+                                        id=data_dict['id']))
+        saml_delete_user_from_saml2_sso_gen_db(query)
+        logic.get_action('user_delete')(context, data_dict)
     else:
-        raise logic.NotFound('User "{id}" was not found.'.format(id=data_dict['id']))
-    saml_delete_user_from_saml2_sso_gen_db(query)
-    logic.get_action('user_delete')(context, data_dict)
+        raise logic.NotFound('User "{id}" was not found.'.format(
+                                        id=data_dict['id']))
 
 
 class Saml2Plugin(p.SingletonPlugin):
@@ -271,6 +280,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
         name_id = environ.get('REMOTE_USER', '')
         c.user = unserialise_nameid(name_id).text
+        # c.user = saml2_get_user_gen(c.user, False, True)
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
             return
@@ -389,17 +399,16 @@ class Saml2Plugin(p.SingletonPlugin):
         context = {'schema': user_schema, 'ignore_auth': True}
 
         if is_new_user:
-            user_name = _get_random_username_from_email(saml_info['email'][0])
+            username = _get_random_username_from_email(saml_info['email'][0])
             gen = saml_info['id'][0]
-            data_dict['id'] = unicode(uuid.uuid4())
-            data_dict['name'] = user_name
+            data_dict['name'] = username
             log.debug("Creating user: %s", data_dict)
             data_dict['password'] = self.make_password()
             new_user = p.toolkit.get_action('user_create')(context, data_dict)
             assign_default_role(context, user_name)
             model.Session.add(UserSsoGen(id=new_user['id'],
                                          gen=gen,
-                                         user_name=user_name))
+                                         user_name=username))
             model.Session.commit()
         elif update_user:
             log.debug("Updating user: %s", data_dict)
@@ -596,7 +605,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
     def get_actions(self):
         return {
-            'saml2_user_delete': saml2_user_delete
+            'user_delete': saml2_user_delete
         }
 
 
