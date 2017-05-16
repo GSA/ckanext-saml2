@@ -179,14 +179,11 @@ def get_came_from(relay_state):
     return came_from.encode('utf8')
 
 
-def saml2_get_user_gen(id=None, return_gen=False, return_user_id=False):
+def saml2_get_user_gen(id=None, return_gen=False):
     query = model.Session.query(UserSsoGen).filter(or_(
                                     UserSsoGen.user_name == id,
                                     UserSsoGen.gen == id,
                                     UserSsoGen.id == id))
-    if return_user_id:
-        query = query.first()
-        return query if query is None else query.id
     if return_gen:
         query = query.first()
         return query if query is None else query.gen
@@ -194,15 +191,18 @@ def saml2_get_user_gen(id=None, return_gen=False, return_user_id=False):
         return query
 
 
-def saml_delete_user_from_saml2_sso_gen_db(query):
+def saml_change_user_state_from_saml2_sso_gen_db(query, state):
     if query is not None:
-        query.delete()
+        if state == 'deleted':
+            query.update({'state': 'deleted'})
+        elif state == 'active':
+            query.update({'state': 'active'})
         model.Session.commit()
 
 
 def saml2_user_delete(context, data_dict):
     print 'context = {0}, data_dict = {1}'.format(context, data_dict)
-    logic.check_access('user_delete')(context, data_dict)
+    logic.check_access('user_delete', context, data_dict)
     query = saml2_get_user_gen(data_dict['id'])
     if query is not None:
         gen = query.first()
@@ -211,8 +211,9 @@ def saml2_user_delete(context, data_dict):
         else:
             raise logic.NotFound('GEN "{id}" was not found.'.format(
                                         id=data_dict['id']))
-        saml_delete_user_from_saml2_sso_gen_db(query)
-        logic.get_action('user_delete')(context, data_dict)
+        saml_change_user_state_from_saml2_sso_gen_db(query, 'deleted')
+        from ckan.logic.action.delete import user_delete as ckan_user_delete
+        ckan_user_delete(context, data_dict)
     else:
         raise logic.NotFound('User "{id}" was not found.'.format(
                                         id=data_dict['id']))
@@ -280,7 +281,9 @@ class Saml2Plugin(p.SingletonPlugin):
 
         name_id = environ.get('REMOTE_USER', '')
         c.user = unserialise_nameid(name_id).text
-        # c.user = saml2_get_user_gen(c.user, False, True)
+        query = saml2_get_user_gen(c.user).first()
+        if query is not None:
+            c.user = query.user_name
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
             return
@@ -383,6 +386,8 @@ class Saml2Plugin(p.SingletonPlugin):
                 log.debug("Reactivating user")
                 userobj.activate()
                 userobj.commit()
+                gen = saml2_get_user_gen(userobj.id)
+                saml_change_user_state_from_saml2_sso_gen_db(gen, 'active')
 
             data_dict = p.toolkit.get_action('user_show')(
                 data_dict={'id': user_name, })
@@ -402,18 +407,20 @@ class Saml2Plugin(p.SingletonPlugin):
             username = _get_random_username_from_email(saml_info['email'][0])
             gen = saml_info['id'][0]
             data_dict['name'] = username
+            data_dict['id'] = unicode(uuid.uuid4())
             log.debug("Creating user: %s", data_dict)
             data_dict['password'] = self.make_password()
             new_user = p.toolkit.get_action('user_create')(context, data_dict)
-            assign_default_role(context, user_name)
+            assign_default_role(context, username)
             model.Session.add(UserSsoGen(id=new_user['id'],
                                          gen=gen,
                                          user_name=username))
             model.Session.commit()
+            return model.User.get(username)
         elif update_user:
             log.debug("Updating user: %s", data_dict)
             p.toolkit.get_action('user_update')(context, data_dict)
-        return model.User.get(user_name) if user_name is not None else []
+        return model.User.get(user_name)
 
     def update_organization_membership(self, org_roles):
         """Create organization using mapping.
@@ -661,5 +668,5 @@ class Saml2Controller(UserController):
 
     def delete(self, id):
         gen = saml2_get_user_gen(id)
-        saml_delete_user_from_saml2_sso_gen_db(gen)
+        saml_change_user_state_from_saml2_sso_gen_db(gen, 'deleted')
         return super(Saml2Controller, self).delete(id)

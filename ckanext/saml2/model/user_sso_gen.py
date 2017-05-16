@@ -13,6 +13,7 @@ class UserSsoGen(Base):
     gen = Column(UnicodeText, nullable=False, unique=True)
     user_name = Column(UnicodeText, nullable=False, unique=True)
     allow_update = Column(Boolean)
+    state = Column(UnicodeText, default='active')
 
 
 def setupdb():
