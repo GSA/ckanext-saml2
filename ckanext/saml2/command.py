@@ -1,7 +1,7 @@
 from ckan.lib.cli import CkanCommand
 import paste.script
 import logging
-from ckanext.saml2.model.user_sso_gen import setupdb, dropdb
+from ckanext.saml2.model.saml2_user import setupdb, dropdb
 
 
 log = logging.getLogger('ckanext.saml2')

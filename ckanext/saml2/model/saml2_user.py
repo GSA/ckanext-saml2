@@ -6,14 +6,13 @@ Base = declarative_base()
 metadata = Base.metadata
 
 
-class UserSsoGen(Base):
-    __tablename__ = 'saml2_user_sso_gen'
+class SAML2User(Base):
+    __tablename__ = 'saml2_user'
 
     id = Column(UnicodeText, primary_key=True)
-    gen = Column(UnicodeText, nullable=False, unique=True)
+    name_id = Column(UnicodeText, nullable=False, unique=True)
     user_name = Column(UnicodeText, nullable=False, unique=True)
-    allow_update = Column(Boolean)
-    state = Column(UnicodeText, default='active')
+    allow_update = Column(Boolean, default=False)
 
 
 def setupdb():

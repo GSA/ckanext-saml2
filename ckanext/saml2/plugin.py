@@ -18,8 +18,9 @@ from routes.mapper import SubMapper
 from saml2.ident import decode as unserialise_nameid
 from saml2.s2repoze.plugins.sp import SAML2Plugin
 from ckan.logic.action.create import _get_random_username_from_email
-from ckanext.saml2.model.user_sso_gen import UserSsoGen
+from ckanext.saml2.model.saml2_user import SAML2User
 from sqlalchemy.sql.expression import or_
+from ckan.logic.action.delete import user_delete as ckan_user_delete
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
@@ -179,44 +180,37 @@ def get_came_from(relay_state):
     return came_from.encode('utf8')
 
 
-def saml2_get_user_gen(id=None, return_gen=False):
-    query = model.Session.query(UserSsoGen).filter(or_(
-                                    UserSsoGen.user_name == id,
-                                    UserSsoGen.gen == id,
-                                    UserSsoGen.id == id))
-    if return_gen:
-        query = query.first()
-        return query if query is None else query.gen
+def saml2_get_user_by_name_id(id=None):
+    query = model.Session.query(SAML2User).\
+        filter(SAML2User.name_id == id).first()
+    return query.id if query is not None else query
+
+
+def saml2_get_user_info(id=None, return_name_id=False):
+    query = model.Session.query(SAML2User).\
+        filter(or_(SAML2User.user_name == id,
+                   SAML2User.id == id))
+    if return_name_id:
+        query = query.\
+            join(model.User, or_(
+                model.User.id == id, model.User.name == id)).\
+            filter(model.User.state == 'active').first()
+        return query if query is None else query.name_id
     else:
         return query
 
 
-def saml_change_user_state_from_saml2_sso_gen_db(query, state):
-    if query is not None:
-        if state == 'deleted':
-            query.update({'state': 'deleted'})
-        elif state == 'active':
-            query.update({'state': 'active'})
-        model.Session.commit()
-
-
 def saml2_user_delete(context, data_dict):
-    print 'context = {0}, data_dict = {1}'.format(context, data_dict)
+    if not data_dict.get('id'):
+        if data_dict.get('nameid'):
+            saml2_user = saml2_get_user_by_name_id(data_dict['nameid'])
+            if saml2_user is not None:
+                data_dict['id'] = saml2_user
+            else:
+                raise logic.NotFound('NameID "{id}" was not found.'.format(
+                                            id=data_dict['nameid']))
     logic.check_access('user_delete', context, data_dict)
-    query = saml2_get_user_gen(data_dict['id'])
-    if query is not None:
-        gen = query.first()
-        if gen is not None:
-            data_dict['id'] = gen.id
-        else:
-            raise logic.NotFound('GEN "{id}" was not found.'.format(
-                                        id=data_dict['id']))
-        saml_change_user_state_from_saml2_sso_gen_db(query, 'deleted')
-        from ckan.logic.action.delete import user_delete as ckan_user_delete
-        ckan_user_delete(context, data_dict)
-    else:
-        raise logic.NotFound('User "{id}" was not found.'.format(
-                                        id=data_dict['id']))
+    ckan_user_delete(context, data_dict)
 
 
 class Saml2Plugin(p.SingletonPlugin):
@@ -258,7 +252,6 @@ class Saml2Plugin(p.SingletonPlugin):
                       action='saml2_unauthorized')
             m.connect('saml2_slo', '/slo', action='slo')
             m.connect('staff_login', '/service/login', action='staff_login')
-            m.connect('saml2_user_delete', '/user/delete/{id}', action='delete')
         return map
 
     def make_password(self):
@@ -281,7 +274,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
         name_id = environ.get('REMOTE_USER', '')
         c.user = unserialise_nameid(name_id).text
-        query = saml2_get_user_gen(c.user).first()
+        query = saml2_get_user_info(c.user).first()
         if query is not None:
             c.user = query.user_name
         if not c.user:
@@ -386,8 +379,6 @@ class Saml2Plugin(p.SingletonPlugin):
                 log.debug("Reactivating user")
                 userobj.activate()
                 userobj.commit()
-                gen = saml2_get_user_gen(userobj.id)
-                saml_change_user_state_from_saml2_sso_gen_db(gen, 'active')
 
             data_dict = p.toolkit.get_action('user_show')(
                 data_dict={'id': user_name, })
@@ -404,19 +395,20 @@ class Saml2Plugin(p.SingletonPlugin):
         context = {'schema': user_schema, 'ignore_auth': True}
 
         if is_new_user:
-            username = _get_random_username_from_email(saml_info['email'][0])
-            gen = saml_info['id'][0]
-            data_dict['name'] = username
+            new_user_username = _get_random_username_from_email(
+                                            saml_info['email'][0])
+            name_id = saml_info['id'][0]
+            data_dict['name'] = new_user_username
             data_dict['id'] = unicode(uuid.uuid4())
             log.debug("Creating user: %s", data_dict)
             data_dict['password'] = self.make_password()
             new_user = p.toolkit.get_action('user_create')(context, data_dict)
-            assign_default_role(context, username)
-            model.Session.add(UserSsoGen(id=new_user['id'],
-                                         gen=gen,
-                                         user_name=username))
+            assign_default_role(context, new_user_username)
+            model.Session.add(SAML2User(id=new_user['id'],
+                                        name_id=name_id,
+                                        user_name=new_user_username))
             model.Session.commit()
-            return model.User.get(username)
+            return model.User.get(new_user_username)
         elif update_user:
             log.debug("Updating user: %s", data_dict)
             p.toolkit.get_action('user_update')(context, data_dict)
@@ -607,7 +599,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
     def get_helpers(self):
         return {
-            'saml2_get_user_gen': saml2_get_user_gen
+            'saml2_get_user_info': saml2_get_user_info
         }
 
     def get_actions(self):
@@ -665,8 +657,3 @@ class Saml2Controller(UserController):
     def staff_login(self):
         """Default login page for staff members."""
         return self.login()
-
-    def delete(self, id):
-        gen = saml2_get_user_gen(id)
-        saml_change_user_state_from_saml2_sso_gen_db(gen, 'deleted')
-        return super(Saml2Controller, self).delete(id)
