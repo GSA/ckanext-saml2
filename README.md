@@ -20,7 +20,7 @@ saml2.user_mapping =
 
 ```
 
-Create custom database table::
+Create custom database table:
 
     paster saml2 create -c config_file
 
@@ -28,9 +28,12 @@ Drop custom database table::
 
     paster saml2 drop -c config_file
 
-Delete user via API using gen instead id::
+Delete user via API using gen instead id. We can pass id or nameid as parameter:
 
-    api/3/action/saml2_user_delete with data_dict = {'id': 'user GEN'}
+    api/3/action/user_delete
+    Parameters (id or nameid):
+        - id (string) – the id, name of the user to delete
+        - nameid (string) – SAML NameID of the user to delete
 
 
 - There are two ways to map organisational SAML attributes:
