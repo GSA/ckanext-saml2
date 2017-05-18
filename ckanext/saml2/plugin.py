@@ -180,36 +180,31 @@ def get_came_from(relay_state):
     return came_from.encode('utf8')
 
 
-def saml2_get_user_by_name_id(id=None):
-    query = model.Session.query(SAML2User).\
+def saml2_get_userid_by_name_id(id):
+    user_info = model.Session.query(SAML2User).\
         filter(SAML2User.name_id == id).first()
-    return query.id if query is not None else query
+    return user_info.id if user_info is not None else user_info
 
 
-def saml2_get_user_info(id=None, return_name_id=False):
+def saml2_get_user_info(id, return_name_id=False):
     query = model.Session.query(SAML2User).\
         filter(or_(SAML2User.user_name == id,
                    SAML2User.id == id))
     if return_name_id:
-        query = query.\
-            join(model.User, or_(
-                model.User.id == id, model.User.name == id)).\
-            filter(model.User.state == 'active').first()
-        return query if query is None else query.name_id
+        user_info = query.first()
+        return user_info if user_info is None else user_info.name_id
     else:
         return query
 
 
 def saml2_user_delete(context, data_dict):
-    if not data_dict.get('id'):
-        if data_dict.get('nameid'):
-            saml2_user = saml2_get_user_by_name_id(data_dict['nameid'])
-            if saml2_user is not None:
-                data_dict['id'] = saml2_user
+    if not data_dict.get('id') and data_dict.get('nameid'):
+            saml2_user_id = saml2_get_userid_by_name_id(data_dict['nameid'])
+            if saml2_user_id is not None:
+                data_dict['id'] = saml2_user_id
             else:
                 raise logic.NotFound('NameID "{id}" was not found.'.format(
                                             id=data_dict['nameid']))
-    logic.check_access('user_delete', context, data_dict)
     ckan_user_delete(context, data_dict)
 
 
@@ -274,9 +269,9 @@ class Saml2Plugin(p.SingletonPlugin):
 
         name_id = environ.get('REMOTE_USER', '')
         c.user = unserialise_nameid(name_id).text
-        query = saml2_get_user_info(c.user).first()
-        if query is not None:
-            c.user = query.user_name
+        user_info = saml2_get_user_info(c.user).first()
+        if user_info is not None:
+            c.user = user_info.user_name
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
             return
