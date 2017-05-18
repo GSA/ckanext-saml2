@@ -2,7 +2,7 @@ import logging
 import uuid
 
 from saml2 import BINDING_HTTP_REDIRECT
-from ckan.common import _
+from ckan.common import _, request
 import pylons.config as config
 
 import ckan.plugins as p
@@ -21,10 +21,12 @@ from ckan.logic.action.create import _get_random_username_from_email
 from ckanext.saml2.model.saml2_user import SAML2User
 from sqlalchemy.sql.expression import or_
 from ckan.logic.action.delete import user_delete as ckan_user_delete
+import ckan.lib.navl.dictization_functions as dictization_functions
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
 NATIVE_LOGIN_ENABLED = p.toolkit.asbool(config.get('saml2.enable_native_login'))
+unflatten = dictization_functions.unflatten
 
 
 def _no_permissions(context, msg):
@@ -252,6 +254,8 @@ class Saml2Plugin(p.SingletonPlugin):
                       action='saml2_unauthorized')
             m.connect('saml2_slo', '/slo', action='slo')
             m.connect('staff_login', '/service/login', action='staff_login')
+            m.connect('saml2_user_edit', '/user/edit/{id:.*}', action='edit',
+                      ckan_icon='cog')
         return map
 
     def make_password(self):
@@ -277,6 +281,7 @@ class Saml2Plugin(p.SingletonPlugin):
         query = saml2_get_user_info(c.user).first()
         if query is not None:
             c.user = query.user_name
+            c.is_allow_update = query.allow_update
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
             return
@@ -361,7 +366,6 @@ class Saml2Plugin(p.SingletonPlugin):
     def _create_or_update_user(self, user_name, saml_info):
         """Create or update the subject's user account and return the user
         object"""
-
         data_dict = {}
         user_schema = schema.default_update_user_schema()
 
@@ -385,15 +389,18 @@ class Saml2Plugin(p.SingletonPlugin):
 
         # Merge SAML assertions into data_dict according to
         # user_mapping
-        update_user = self.update_data_dict(data_dict,
-                                            self.user_mapping,
-                                            saml_info)
+        c = p.toolkit.c
+        if not c.is_allow_update:
+            update_user = self.update_data_dict(data_dict,
+                                                self.user_mapping,
+                                                saml_info)
+        else:
+            update_user = 0
 
         # Remove validation of the values from id and name fields
         user_schema['id'] = [p.toolkit.get_validator('not_empty')]
         user_schema['name'] = [p.toolkit.get_validator('not_empty')]
         context = {'schema': user_schema, 'ignore_auth': True}
-
         if is_new_user:
             new_user_username = _get_random_username_from_email(
                                             saml_info['email'][0])
@@ -657,3 +664,18 @@ class Saml2Controller(UserController):
     def staff_login(self):
         """Default login page for staff members."""
         return self.login()
+
+    def edit(self, id=None, data=None, errors=None, error_summary=None):
+        c = p.toolkit.c
+        c.allow_user_changes = config.get('saml2.allow_user_changes', '').split()
+        return super(Saml2Controller, self).edit(id, data, errors, error_summary)
+
+    def _save_edit(self, id, context):
+        data_dict = logic.clean_dict(unflatten(
+            logic.tuplize_dict(logic.parse_params(request.params))))
+        user_info_query = saml2_get_user_info(id)
+        if data_dict.get('user_custom_profile_data_checkbox', ''):
+            user_info_query.update({'allow_update': True})
+        else:
+            user_info_query.update({'allow_update': False})
+        return super(Saml2Controller, self)._save_edit(id, context)
