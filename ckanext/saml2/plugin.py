@@ -186,15 +186,16 @@ def saml2_get_userid_by_name_id(id):
     return user_info.id if user_info is not None else user_info
 
 
-def saml2_get_user_info(id, return_name_id=False):
+def saml2_get_user_name_id(id):
+    user_info = saml2_get_user_info(id).first()
+    return user_info if user_info is None else user_info.name_id
+
+
+def saml2_get_user_info(id):
     query = model.Session.query(SAML2User).\
         filter(or_(SAML2User.user_name == id,
                    SAML2User.id == id))
-    if return_name_id:
-        user_info = query.first()
-        return user_info if user_info is None else user_info.name_id
-    else:
-        return query
+    return query
 
 
 def saml2_user_delete(context, data_dict):
@@ -594,7 +595,7 @@ class Saml2Plugin(p.SingletonPlugin):
 
     def get_helpers(self):
         return {
-            'saml2_get_user_info': saml2_get_user_info
+            'saml2_get_user_name_id': saml2_get_user_name_id
         }
 
     def get_actions(self):
