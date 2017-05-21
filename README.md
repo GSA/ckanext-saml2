@@ -1,6 +1,6 @@
 ckanext-saml2
 ==============
-An extension to enable Single Sing On(SSO) for CKAN data portals via SAML2 Authentication.
+An extension to enable Single Sign On(SSO) for CKAN data portals via SAML2 Authentication.
 
 Requirements:
 ------------
