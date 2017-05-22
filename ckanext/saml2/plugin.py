@@ -493,7 +493,8 @@ class Saml2Plugin(p.SingletonPlugin):
         mapping. Returns the number of items changes."""
         count_modified = 0
         c = p.toolkit.c
-        if not c.is_allow_update:
+        c.allow_user_changes = config.get('ckan.saml2.allow_user_changes', False)
+        if c.allow_user_changes and not c.is_allow_update:
             for field in mapping:
                 value = saml_info.get(mapping[field])
                 if value:
@@ -661,8 +662,6 @@ class Saml2Controller(UserController):
         return self.login()
 
     def edit(self, id=None, data=None, errors=None, error_summary=None):
-        c = p.toolkit.c
-        c.allow_user_changes = config.get('saml2.allow_user_changes', '').split()
         return super(Saml2Controller, self).edit(id, data, errors, error_summary)
 
     def _save_edit(self, id, context):
