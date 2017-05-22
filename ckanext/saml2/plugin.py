@@ -662,6 +662,8 @@ class Saml2Controller(UserController):
         return self.login()
 
     def edit(self, id=None, data=None, errors=None, error_summary=None):
+        c = p.toolkit.c
+        c.allow_user_changes = config.get('ckan.saml2.allow_user_changes', False)
         return super(Saml2Controller, self).edit(id, data, errors, error_summary)
 
     def _save_edit(self, id, context):
