@@ -196,6 +196,7 @@ def saml2_get_user_name_id(id):
 def saml2_get_user_info(id):
     query = model.Session.query(SAML2User).\
         filter(or_(SAML2User.user_name == id,
+                   SAML2User.name_id == id,
                    SAML2User.id == id))
     return query
 
