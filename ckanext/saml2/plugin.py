@@ -17,6 +17,10 @@ from ckan.controllers.user import UserController
 from routes.mapper import SubMapper
 from saml2.ident import decode as unserialise_nameid
 from saml2.s2repoze.plugins.sp import SAML2Plugin
+from ckan.logic.action.create import _get_random_username_from_email
+from ckanext.saml2.model.saml2_user import SAML2User
+from sqlalchemy.sql.expression import or_
+from ckan.logic.action.delete import user_delete as ckan_user_delete
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
@@ -176,6 +180,35 @@ def get_came_from(relay_state):
     return came_from.encode('utf8')
 
 
+def saml2_get_userid_by_name_id(id):
+    user_info = model.Session.query(SAML2User).\
+        filter(SAML2User.name_id == id).first()
+    return user_info.id if user_info is not None else user_info
+
+
+def saml2_get_user_name_id(id):
+    user_info = saml2_get_user_info(id).first()
+    return user_info if user_info is None else user_info.name_id
+
+
+def saml2_get_user_info(id):
+    query = model.Session.query(SAML2User).\
+        filter(or_(SAML2User.user_name == id,
+                   SAML2User.id == id))
+    return query
+
+
+def saml2_user_delete(context, data_dict):
+    if not data_dict.get('id') and data_dict.get('nameid'):
+            saml2_user_id = saml2_get_userid_by_name_id(data_dict['nameid'])
+            if saml2_user_id is not None:
+                data_dict['id'] = saml2_user_id
+            else:
+                raise logic.NotFound('NameID "{id}" was not found.'.format(
+                                            id=data_dict['nameid']))
+    ckan_user_delete(context, data_dict)
+
+
 class Saml2Plugin(p.SingletonPlugin):
     """SAML2 plugin."""
 
@@ -184,6 +217,8 @@ class Saml2Plugin(p.SingletonPlugin):
     p.implements(p.IAuthFunctions, inherit=True)
     p.implements(p.IConfigurer, inherit=True)
     p.implements(p.IConfigurable)
+    p.implements(p.ITemplateHelpers)
+    p.implements(p.IActions)
 
     def update_config(self, config):
         """Update environment config."""
@@ -235,6 +270,9 @@ class Saml2Plugin(p.SingletonPlugin):
 
         name_id = environ.get('REMOTE_USER', '')
         c.user = unserialise_nameid(name_id).text
+        user_info = saml2_get_user_info(c.user).first()
+        if user_info is not None:
+            c.user = user_info.user_name
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
             return
@@ -353,15 +391,23 @@ class Saml2Plugin(p.SingletonPlugin):
         context = {'schema': user_schema, 'ignore_auth': True}
 
         if is_new_user:
+            new_user_username = _get_random_username_from_email(
+                                            saml_info['email'][0])
+            name_id = saml_info['id'][0]
+            data_dict['name'] = new_user_username
+            data_dict['id'] = unicode(uuid.uuid4())
             log.debug("Creating user: %s", data_dict)
             data_dict['password'] = self.make_password()
-            p.toolkit.get_action('user_create')(context, data_dict)
-            assign_default_role(context, user_name)
-
+            new_user = p.toolkit.get_action('user_create')(context, data_dict)
+            assign_default_role(context, new_user_username)
+            model.Session.add(SAML2User(id=new_user['id'],
+                                        name_id=name_id,
+                                        user_name=new_user_username))
+            model.Session.commit()
+            return model.User.get(new_user_username)
         elif update_user:
             log.debug("Updating user: %s", data_dict)
             p.toolkit.get_action('user_update')(context, data_dict)
-
         return model.User.get(user_name)
 
     def update_organization_membership(self, org_roles):
@@ -545,6 +591,16 @@ class Saml2Plugin(p.SingletonPlugin):
             'user_reset': user_reset,
             'user_delete': user_delete,
             'request_reset': request_reset,
+        }
+
+    def get_helpers(self):
+        return {
+            'saml2_get_user_name_id': saml2_get_user_name_id
+        }
+
+    def get_actions(self):
+        return {
+            'user_delete': saml2_user_delete
         }
 
 
