@@ -19,6 +19,35 @@ saml2.user_mapping =
     name~name
 
 ```
+
+Create custom database table:
+
+    paster saml2 create -c config_file
+
+Drop custom database table::
+
+    paster saml2 drop -c config_file
+
+Delete user via API using gen instead id. We can pass id or nameid as parameter:
+
+    api/3/action/user_delete
+    Parameters (id or nameid):
+        - id (string) – the id, name of the user to delete
+        - nameid (string) – SAML NameID of the user to delete
+
+To keep IdP metadata is refreshed automatically before expiry:
+
+    Run ckanext/saml2/admin/fresh_idp_metadata.py
+    Parameters (url, path):
+        - url (string) – URL to download new metadata
+        - path (string) – path to current metadata xml file
+
+    After download new metadata you need to remove the Post binding information from the IdP metadata by call xmlstarlet command and replace old metadata xml file:
+
+        ```
+        xmlstarlet ed -d '/md:EntityDescriptor/md:IDPSSODescriptor/md:SingleLogoutService[@Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"]' <original IdP metadata file> > <new metadata file>
+        ```
+
 - There are two ways to map organisational SAML attributes:
 ```
 
@@ -75,3 +104,8 @@ saml2.sp_initiates_slo = true
 - Add `saml2.default_org` and `saml2.default_role` - that values will be assigned to newly created users as organization and role in this organization accordingly
 - In order to enable native login and registration as default option, add `saml2.enable_native_login = true|false` directive to config file.
 - `saml2.login_form_sso_text = BUTTON_TEXT` allows you to controll label of SSO button at login page(default: 'Login with SSO').
+
+
+
+#### Known Issues
+- The only binding supported for sending logout reponses for an IdP-initiated global logout is HTTP Redirect. As of v4.4.0 pysaml2's behaviour is to use a Post binding if the SP receives a logout request via either a Post or Redirect binding but it subsequently raises an exception. A workaround is modify the local copy of the IdP metadata by removing the element that declares support for the Post binding for logout, e.g., `<md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" ... />`, which will cause pysaml2 to revert to a Redirect binding.
