@@ -1,6 +1,6 @@
 {% import 'macros/form.html' as form %}
 
-{% if c.allow_user_changes|lower == 'true' %}
+{% if c.allow_user_changes %}
     {% if not c.is_allow_update %}
         {% set attrs = {'readonly': 'readonly'} %}
     {% else %}
@@ -18,7 +18,7 @@
             <legend>{{ _('Change details') }}</legend>
             {% block user_custom_data %}
                 {% if c.allow_user_changes|lower == 'true' %}
-                    {{ form.checkbox("user_custom_profile_data_checkbox", id="user_custom_profile_data_checkbox", label="I want to provide custom profile data", value=c.is_allow_update, classes=["user_custom_profile_data_checkbox"], checked=c.is_allow_update) }}
+                    {{ form.checkbox("user_custom_profile_data", id="user_custom_profile_data", label="I want to provide custom profile data", value=c.is_allow_update, classes=["user_custom_profile_data"], checked=c.is_allow_update) }}
                 {% endif %}
             {% endblock %}
 
@@ -45,8 +45,10 @@
       {% block user_edit_form_password %}
           <fieldset>
             <legend>{{ _('Change password') }}</legend>
+
             {% set attrs = {'autocomplete': 'off'} %}
-            {{ attrs.update(readonly="readonly") if not h.check_access('sysadmin') }}
+            {% do attrs.update(readonly="readonly") if not h.check_access('sysadmin') %}
+
             {{ form.input('old_password', type='password', label=_('Old Password'), id='field-password', value=data.oldpassword, error=errors.oldpassword, classes=['control-medium'], attrs=attrs) }}
 
             {{ form.input('password1', type='password', label=_('Password'), id='field-password', value=data.password1, error=errors.password1, classes=['control-medium'], attrs=attrs) }}

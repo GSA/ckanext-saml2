@@ -21,12 +21,10 @@ from ckan.logic.action.create import _get_random_username_from_email
 from ckanext.saml2.model.saml2_user import SAML2User
 from sqlalchemy.sql.expression import or_
 from ckan.logic.action.delete import user_delete as ckan_user_delete
-import ckan.lib.navl.dictization_functions as dictization_functions
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
 NATIVE_LOGIN_ENABLED = p.toolkit.asbool(config.get('saml2.enable_native_login'))
-unflatten = dictization_functions.unflatten
 
 
 def _no_permissions(context, msg):
@@ -275,13 +273,13 @@ class Saml2Plugin(p.SingletonPlugin):
 
         name_id = environ.get('REMOTE_USER', '')
         c.user = unserialise_nameid(name_id).text
-        user_info = saml2_get_user_info(c.user).first()
-        if user_info is not None:
-            c.user = user_info.user_name
-            c.is_allow_update = user_info.allow_update
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
             return
+
+        user_info = saml2_get_user_info(c.user).first()
+        if user_info is not None:
+            c.user = user_info.user_name
 
         log.debug("REMOTE_USER = \"{0}\"".format(c.user))
         log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
@@ -293,7 +291,8 @@ class Saml2Plugin(p.SingletonPlugin):
             # This is a request in an existing session so no need to provision
             # an account, set c.userobj and return
             c.userobj = model.User.get(c.user)
-            c.user = c.userobj.name
+            if c.userobj is not None:
+                c.user = c.userobj.name
             return
 
         try:
@@ -493,7 +492,9 @@ class Saml2Plugin(p.SingletonPlugin):
         mapping. Returns the number of items changes."""
         count_modified = 0
         c = p.toolkit.c
-        c.allow_user_changes = config.get('ckan.saml2.allow_user_changes', False)
+        c.allow_user_changes = p.toolkit.asbool(
+            config.get('ckan.saml2.allow_user_changes', False))
+        c.is_allow_update = saml2_get_user_info(c.user).first().allow_update
         if c.allow_user_changes and not c.is_allow_update:
             for field in mapping:
                 value = saml_info.get(mapping[field])
@@ -663,14 +664,16 @@ class Saml2Controller(UserController):
 
     def edit(self, id=None, data=None, errors=None, error_summary=None):
         c = p.toolkit.c
-        c.allow_user_changes = config.get('ckan.saml2.allow_user_changes', False)
+        c.allow_user_changes = p.toolkit.asbool(
+            config.get('ckan.saml2.allow_user_changes', False))
+        c.is_allow_update = saml2_get_user_info(c.user).first().allow_update
         return super(Saml2Controller, self).edit(id, data, errors, error_summary)
 
     def _save_edit(self, id, context):
-        data_dict = logic.clean_dict(unflatten(
-            logic.tuplize_dict(logic.parse_params(request.params))))
+        user_custom_profile_data = p.toolkit.request.params.get(
+                                        'user_custom_profile_data')
         user_info_query = saml2_get_user_info(id)
-        if data_dict.get('user_custom_profile_data_checkbox', ''):
+        if user_custom_profile_data is not None:
             user_info_query.update({'allow_update': True})
         else:
             user_info_query.update({'allow_update': False})
