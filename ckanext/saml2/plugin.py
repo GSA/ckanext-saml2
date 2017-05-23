@@ -194,6 +194,7 @@ def saml2_get_user_name_id(id):
 def saml2_get_user_info(id):
     query = model.Session.query(SAML2User).\
         filter(or_(SAML2User.user_name == id,
+                   SAML2User.name_id == id,
                    SAML2User.id == id))
     return query
 
@@ -270,12 +271,13 @@ class Saml2Plugin(p.SingletonPlugin):
 
         name_id = environ.get('REMOTE_USER', '')
         c.user = unserialise_nameid(name_id).text
-        user_info = saml2_get_user_info(c.user).first()
-        if user_info is not None:
-            c.user = user_info.user_name
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
             return
+
+        user_info = saml2_get_user_info(c.user).first()
+        if user_info is not None:
+            c.user = user_info.user_name
 
         log.debug("REMOTE_USER = \"{0}\"".format(c.user))
         log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
@@ -287,7 +289,8 @@ class Saml2Plugin(p.SingletonPlugin):
             # This is a request in an existing session so no need to provision
             # an account, set c.userobj and return
             c.userobj = model.User.get(c.user)
-            c.user = c.userobj.name
+            if c.userobj is not None:
+                c.user = c.userobj.name
             return
 
         try:
