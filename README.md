@@ -35,6 +35,18 @@ Delete user via API using gen instead id. We can pass id or nameid as parameter:
         - id (string) – the id, name of the user to delete
         - nameid (string) – SAML NameID of the user to delete
 
+To keep IdP metadata is refreshed automatically before expiry:
+
+    Run ckanext/saml2/admin/fresh_idp_metadata.py
+    Parameters (url, path):
+        - url (string) – URL to download new metadata
+        - path (string) – path to current metadata xml file
+
+    After download new metadata you need to remove the Post binding information from the IdP metadata by call xmlstarlet command and replace old metadata xml file:
+
+        ```
+        xmlstarlet ed -d '/md:EntityDescriptor/md:IDPSSODescriptor/md:SingleLogoutService[@Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"]' <original IdP metadata file> > <new metadata file>
+        ```
 
 - There are two ways to map organisational SAML attributes:
 ```
