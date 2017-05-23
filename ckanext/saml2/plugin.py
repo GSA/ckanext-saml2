@@ -2,7 +2,7 @@ import logging
 import uuid
 from ckan.common import _
 from saml2 import BINDING_HTTP_REDIRECT
-from ckan.common import _
+from ckan.common import _, request
 import pylons.config as config
 
 import ckan.plugins as p
@@ -249,6 +249,8 @@ class Saml2Plugin(p.SingletonPlugin):
                       action='saml2_unauthorized')
             m.connect('saml2_slo', '/slo', action='slo')
             m.connect('staff_login', '/service/login', action='staff_login')
+            m.connect('saml2_user_edit', '/user/edit/{id:.*}', action='edit',
+                      ckan_icon='cog')
         return map
 
     def make_password(self):
@@ -360,7 +362,6 @@ class Saml2Plugin(p.SingletonPlugin):
     def _create_or_update_user(self, user_name, saml_info):
         """Create or update the subject's user account and return the user
         object"""
-
         data_dict = {}
         user_schema = schema.default_update_user_schema()
 
@@ -392,7 +393,6 @@ class Saml2Plugin(p.SingletonPlugin):
         user_schema['id'] = [p.toolkit.get_validator('not_empty')]
         user_schema['name'] = [p.toolkit.get_validator('not_empty')]
         context = {'schema': user_schema, 'ignore_auth': True}
-
         if is_new_user:
             new_user_username = _get_random_username_from_email(
                                             saml_info['email'][0])
@@ -491,22 +491,27 @@ class Saml2Plugin(p.SingletonPlugin):
         """Updates data_dict with values from saml_info according to
         mapping. Returns the number of items changes."""
         count_modified = 0
-        for field in mapping:
-            value = saml_info.get(mapping[field])
-            if value:
-                # If list get first value
-                if isinstance(value, list):
-                    value = value[0]
-                if not field.startswith('extras:'):
-                    if data_dict.get(field) != value:
-                        data_dict[field] = value
+        c = p.toolkit.c
+        c.allow_user_changes = p.toolkit.asbool(
+            config.get('ckan.saml2.allow_user_changes', False))
+        c.is_allow_update = saml2_get_user_info(c.user).first().allow_update
+        if c.allow_user_changes and not c.is_allow_update:
+            for field in mapping:
+                value = saml_info.get(mapping[field])
+                if value:
+                    # If list get first value
+                    if isinstance(value, list):
+                        value = value[0]
+                    if not field.startswith('extras:'):
+                        if data_dict.get(field) != value:
+                            data_dict[field] = value
+                            count_modified += 1
+                    else:
+                        if 'extras' not in data_dict:
+                            data_dict['extras'] = []
+                        data_dict['extras'].append(
+                            dict(key=field[7:], value=value))
                         count_modified += 1
-                else:
-                    if 'extras' not in data_dict:
-                        data_dict['extras'] = []
-                    data_dict['extras'].append(
-                        dict(key=field[7:], value=value))
-                    count_modified += 1
         return count_modified
 
     def login(self):
@@ -656,3 +661,20 @@ class Saml2Controller(UserController):
     def staff_login(self):
         """Default login page for staff members."""
         return self.login()
+
+    def edit(self, id=None, data=None, errors=None, error_summary=None):
+        c = p.toolkit.c
+        c.allow_user_changes = p.toolkit.asbool(
+            config.get('ckan.saml2.allow_user_changes', False))
+        c.is_allow_update = saml2_get_user_info(c.user).first().allow_update
+        return super(Saml2Controller, self).edit(id, data, errors, error_summary)
+
+    def _save_edit(self, id, context):
+        user_custom_profile_data = p.toolkit.request.params.get(
+                                        'user_custom_profile_data')
+        user_info_query = saml2_get_user_info(id)
+        if user_custom_profile_data is not None:
+            user_info_query.update({'allow_update': True})
+        else:
+            user_info_query.update({'allow_update': False})
+        return super(Saml2Controller, self)._save_edit(id, context)
