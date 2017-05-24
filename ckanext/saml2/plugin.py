@@ -672,7 +672,10 @@ class Saml2Controller(UserController):
     def _save_edit(self, id, context):
         user_custom_profile_data = p.toolkit.request.params.get(
                                         'user_custom_profile_data')
+        name = p.toolkit.request.params.get('name')
         user_info_query = saml2_get_user_info(id)
+        if id != name:
+            user_info_query.update({'user_name': name})
         if user_custom_profile_data is not None:
             user_info_query.update({'allow_update': True})
         else:
