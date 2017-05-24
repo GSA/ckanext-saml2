@@ -11,7 +11,6 @@ class SAML2User(Base):
 
     id = Column(UnicodeText, primary_key=True)
     name_id = Column(UnicodeText, nullable=False, unique=True)
-    user_name = Column(UnicodeText, nullable=False, unique=True)
     allow_update = Column(Boolean, default=False)
 
 
