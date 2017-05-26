@@ -47,6 +47,11 @@ To keep IdP metadata is refreshed automatically before expiry:
         ```
         xmlstarlet ed -d '/md:EntityDescriptor/md:IDPSSODescriptor/md:SingleLogoutService[@Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"]' <original IdP metadata file> > <new metadata file>
         ```
+Update user via API. We can pass allow_update as parameter for allow or reject user custom profile data set:
+
+    api/3/action/user_update
+    Parameters (default parametrs and allow_update optional):
+        - allow_update (True or False) – checked or unchecked checkbox for SSO user profile page
 
 - There are two ways to map organisational SAML attributes:
 ```
