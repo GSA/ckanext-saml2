@@ -444,8 +444,11 @@ class Saml2Plugin(p.SingletonPlugin):
             model.Session.commit()
             return model.User.get(new_user_username)
         elif update_user:
-            log.debug("Updating user: %s", data_dict)
-            p.toolkit.get_action('user_update')(context, data_dict)
+            c = p.toolkit.c
+            saml2_check_for_user_update(data_dict.get('id', None))
+            if c.allow_user_changes and not c.is_allow_update:
+                log.debug("Updating user: %s", data_dict)
+                p.toolkit.get_action('user_update')(context, data_dict)
         return model.User.get(user_name)
 
     def update_organization_membership(self, org_roles):
@@ -526,25 +529,22 @@ class Saml2Plugin(p.SingletonPlugin):
         """Updates data_dict with values from saml_info according to
         mapping. Returns the number of items changes."""
         count_modified = 0
-        c = p.toolkit.c
-        saml2_check_for_user_update(data_dict.get('id', None))
-        if c.allow_user_changes and not c.is_allow_update:
-            for field in mapping:
-                value = saml_info.get(mapping[field])
-                if value:
-                    # If list get first value
-                    if isinstance(value, list):
-                        value = value[0]
-                    if not field.startswith('extras:'):
-                        if data_dict.get(field) != value:
-                            data_dict[field] = value
-                            count_modified += 1
-                    else:
-                        if 'extras' not in data_dict:
-                            data_dict['extras'] = []
-                        data_dict['extras'].append(
-                            dict(key=field[7:], value=value))
+        for field in mapping:
+            value = saml_info.get(mapping[field])
+            if value:
+                # If list get first value
+                if isinstance(value, list):
+                    value = value[0]
+                if not field.startswith('extras:'):
+                    if data_dict.get(field) != value:
+                        data_dict[field] = value
                         count_modified += 1
+                else:
+                    if 'extras' not in data_dict:
+                        data_dict['extras'] = []
+                    data_dict['extras'].append(
+                        dict(key=field[7:], value=value))
+                    count_modified += 1
         return count_modified
 
     def login(self):
