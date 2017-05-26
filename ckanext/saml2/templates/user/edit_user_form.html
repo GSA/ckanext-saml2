@@ -1,14 +1,19 @@
 {% import 'macros/form.html' as form %}
 
-{% if c.allow_user_changes %}
-    {% if not c.is_allow_update %}
-        {% set attrs = {'readonly': 'readonly'} %}
-    {% else %}
-        {% set attrs = {} %}
-    {% endif %}
+{% if c.allow_user_changes is none and c.is_allow_update is none %}
+    {% set attrs = {} %}
 {% else %}
-    {% set attrs = {'readonly': 'readonly'} %}
+    {% if c.allow_user_changes %}
+        {% if not c.is_allow_update %}
+            {% set attrs = {'readonly': 'readonly'} %}
+        {% else %}
+            {% set attrs = {} %}
+        {% endif %}
+    {% else %}
+        {% set attrs = {'readonly': 'readonly'} %}
+    {% endif %}
 {% endif %}
+
 
 {% block user_edit_form %}
     <form id="user-edit-form" class="dataset-form form-horizontal" method="post" action="{{ action }}">
@@ -17,8 +22,8 @@
           <fieldset>
             <legend>{{ _('Change details') }}</legend>
             {% block user_custom_data %}
-                {% if c.allow_user_changes|lower == 'true' %}
-                    {{ form.checkbox("user_custom_profile_data", id="user_custom_profile_data", label="I want to provide custom profile data", value=c.is_allow_update, classes=["user_custom_profile_data"], checked=c.is_allow_update) }}
+                {% if c.allow_user_changes is not none and c.allow_user_changes %}
+                    {{ form.checkbox("user_custom_profile_data", id="user_custom_profile_data", label="I want to provide custom profile data", classes=["user_custom_profile_data"], checked=c.is_allow_update) }}
                 {% endif %}
             {% endblock %}
 
@@ -47,10 +52,10 @@
             <legend>{{ _('Change password') }}</legend>
 
             {% set attrs = {'autocomplete': 'off'} %}
-            {% do attrs.update(readonly="readonly") if not h.check_access('sysadmin') %}
-
-            {{ form.input('old_password', type='password', label=_('Old Password'), id='field-password', value=data.oldpassword, error=errors.oldpassword, classes=['control-medium'], attrs=attrs) }}
-
+            {% do attrs.update(readonly="readonly") if c.is_allow_update is not none %}
+            {% block user_edit_form_old_password %}
+                {{ form.input('old_password', type='password', label=_('Old Password'), id='field-password', value=data.oldpassword, error=errors.oldpassword, classes=['control-medium'], attrs=attrs) }}
+            {% endblock %}
             {{ form.input('password1', type='password', label=_('Password'), id='field-password', value=data.password1, error=errors.password1, classes=['control-medium'], attrs=attrs) }}
 
             {{ form.input('password2', type='password', label=_('Confirm Password'), id='field-password-confirm', value=data.password2, error=errors.password2, classes=['control-medium'], attrs=attrs) }}

@@ -35,6 +35,11 @@ Delete user via API using gen instead id. We can pass id or nameid as parameter:
         - id (string) – the id, name of the user to delete
         - nameid (string) – SAML NameID of the user to delete
 
+Update user via API. We can pass allow_update as parameter for allow or reject user custom profile data set:
+
+    api/3/action/user_update
+    Parameters (default parametrs and allow_update optional):
+        - allow_update (True or False) – checked or unchecked checkbox for SSO user profile page
 
 - There are two ways to map organisational SAML attributes:
 ```

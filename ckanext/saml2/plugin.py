@@ -21,6 +21,8 @@ from ckan.logic.action.create import _get_random_username_from_email
 from ckanext.saml2.model.saml2_user import SAML2User
 from sqlalchemy.sql.expression import or_
 from ckan.logic.action.delete import user_delete as ckan_user_delete
+from ckan.logic.action.update import user_update as ckan_user_update
+
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
@@ -209,6 +211,39 @@ def saml2_user_delete(context, data_dict):
                 raise logic.NotFound('NameID "{id}" was not found.'.format(
                                             id=data_dict['nameid']))
     ckan_user_delete(context, data_dict)
+
+
+def saml2_check_for_user_update(id):
+    c = p.toolkit.c
+    user_info = saml2_get_user_info(id)
+    if user_info is not None:
+        c.allow_user_changes = p.toolkit.asbool(
+            config.get('ckan.saml2.allow_user_changes', False))
+        c.is_allow_update = user_info[0].allow_update
+    else:
+        c.allow_user_changes = c.is_allow_update = None
+
+
+def saml2_user_update(context, data_dict):
+    id = logic.get_or_bust(data_dict, 'id')
+    c = p.toolkit.c
+    saml2_check_for_user_update(id)
+    name_id = saml2_get_user_name_id(id)
+    if name_id is not None:
+        if c.allow_user_changes:
+            allow_update_params = data_dict.get('allow_update')
+            if allow_update_params is not None:
+                model.Session.query(SAML2User).filter_by(name_id=name_id).\
+                    update({'allow_update': allow_update_params})
+            elif not isinstance(c.allow_update_checkbox, str):
+                model.Session.query(SAML2User).filter_by(name_id=name_id).\
+                    update({'allow_update': c.allow_update_checkbox})
+            model.Session.commit()
+            return ckan_user_update(context, data_dict)
+        else:
+            raise logic.ValidationError({'error': ['Deny user changes in config file']})
+    else:
+        return ckan_user_update(context, data_dict)
 
 
 class Saml2Plugin(p.SingletonPlugin):
@@ -492,9 +527,7 @@ class Saml2Plugin(p.SingletonPlugin):
         mapping. Returns the number of items changes."""
         count_modified = 0
         c = p.toolkit.c
-        c.allow_user_changes = p.toolkit.asbool(
-            config.get('ckan.saml2.allow_user_changes', False))
-        c.is_allow_update = saml2_get_user_info(c.user).first().allow_update
+        saml2_check_for_user_update(data_dict.get('id', None))
         if c.allow_user_changes and not c.is_allow_update:
             for field in mapping:
                 value = saml_info.get(mapping[field])
@@ -608,7 +641,8 @@ class Saml2Plugin(p.SingletonPlugin):
 
     def get_actions(self):
         return {
-            'user_delete': saml2_user_delete
+            'user_delete': saml2_user_delete,
+            'user_update': saml2_user_update
         }
 
 
@@ -663,21 +697,17 @@ class Saml2Controller(UserController):
         return self.login()
 
     def edit(self, id=None, data=None, errors=None, error_summary=None):
-        c = p.toolkit.c
-        c.allow_user_changes = p.toolkit.asbool(
-            config.get('ckan.saml2.allow_user_changes', False))
-        c.is_allow_update = saml2_get_user_info(c.user).first().allow_update
+        saml2_check_for_user_update(id)
         return super(Saml2Controller, self).edit(id, data, errors, error_summary)
 
     def _save_edit(self, id, context):
-        user_custom_profile_data = p.toolkit.request.params.get(
-                                        'user_custom_profile_data')
-        name = p.toolkit.request.params.get('name')
-        user_info_query = saml2_get_user_info(id)
-        if id != name:
-            user_info_query.update({'user_name': name})
-        if user_custom_profile_data is not None:
-            user_info_query.update({'allow_update': True})
-        else:
-            user_info_query.update({'allow_update': False})
+        name_id = saml2_get_user_name_id(id)
+        if name_id is not None:
+            c = p.toolkit.c
+            user_custom_profile_data = p.toolkit.request.params.get(
+                                            'user_custom_profile_data')
+            if user_custom_profile_data is not None:
+                c.allow_update_checkbox = True
+            else:
+                c.allow_update_checkbox = False
         return super(Saml2Controller, self)._save_edit(id, context)
