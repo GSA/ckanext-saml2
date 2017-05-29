@@ -187,14 +187,16 @@ def saml2_get_userid_by_name_id(id):
 
 
 def saml2_get_user_name_id(id):
-    user_info = saml2_get_user_info(id).first()
-    return user_info if user_info is None else user_info.name_id
+    user_info = saml2_get_user_info(id)
+    return user_info if user_info is None else user_info[0].name_id
 
 
 def saml2_get_user_info(id):
-    query = model.Session.query(SAML2User).\
-        filter(or_(SAML2User.user_name == id,
-                   SAML2User.id == id))
+    query = model.Session.query(SAML2User, model.User).\
+        join(model.User, model.User.id == SAML2User.id).\
+        filter(or_(SAML2User.name_id == id,
+                   SAML2User.id == id,
+                   model.User.name == id)).first()
     return query
 
 
@@ -270,12 +272,13 @@ class Saml2Plugin(p.SingletonPlugin):
 
         name_id = environ.get('REMOTE_USER', '')
         c.user = unserialise_nameid(name_id).text
-        user_info = saml2_get_user_info(c.user).first()
-        if user_info is not None:
-            c.user = user_info.user_name
         if not c.user:
             log.info("Couldn't decode nameid, giving up")
             return
+
+        user_info = saml2_get_user_info(c.user)
+        if user_info is not None:
+            c.user = user_info[1].name
 
         log.debug("REMOTE_USER = \"{0}\"".format(c.user))
         log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
@@ -287,7 +290,8 @@ class Saml2Plugin(p.SingletonPlugin):
             # This is a request in an existing session so no need to provision
             # an account, set c.userobj and return
             c.userobj = model.User.get(c.user)
-            c.user = c.userobj.name
+            if c.userobj is not None:
+                c.user = c.userobj.name
             return
 
         try:
@@ -401,8 +405,7 @@ class Saml2Plugin(p.SingletonPlugin):
             new_user = p.toolkit.get_action('user_create')(context, data_dict)
             assign_default_role(context, new_user_username)
             model.Session.add(SAML2User(id=new_user['id'],
-                                        name_id=name_id,
-                                        user_name=new_user_username))
+                                        name_id=name_id))
             model.Session.commit()
             return model.User.get(new_user_username)
         elif update_user:
