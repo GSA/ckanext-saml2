@@ -39,8 +39,8 @@ valid_until = root.get('validUntil', None)
 if not valid_until:
     sys.exit('Metadata has no expiry date')
 
-root = None
-tree = None
+del root
+del tree
 
 valid_until = datetime.strptime(valid_until, '%Y-%m-%dT%H:%M:%SZ').date()
 days_till_expiry = (valid_until - datetime.utcnow().date()).days
