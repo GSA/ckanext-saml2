@@ -80,10 +80,10 @@ if days_till_expiry <= 4:
             #print "Removed IdP POST binding SLO config"
 
     # Write to temp file
-    tmp_filename = 'idp-metadata-{0}.xml'.format(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+    tmp_filename = 'idp-metadata-{0}.xml'.format(datetime.now().strftime('%Y-%m-%dT%H%M%S'))
     tmp_path = os.path.join(os.path.dirname(args.local_path), tmp_filename)
     metadata.write(tmp_path, encoding="utf-8")
 
     # Atomically replace old with new
-    os.rename(tmp_filename, args.local_path)
+    os.rename(tmp_path, args.local_path)
     #print "Replaced metadata"
