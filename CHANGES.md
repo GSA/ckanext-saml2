@@ -2,7 +2,7 @@
 
 ## Next release
 
-*
+* Added a script ckanext/saml2/admin/fresh_idp_metadata.py to keep IdP metadata up-to-date
 
 ## 0.2.0
 
