@@ -31,6 +31,13 @@ parser.add_argument(
     help='Path to current metadata xml file'
 )
 
+parser.add_argument(
+    '-k',
+    '--insecure',
+    help='Don\'t verify metadata security certificate',
+    action='store_true'
+)
+
 args = parser.parse_args()
 
 tree = ET.ElementTree(file=args.local_path)
@@ -49,7 +56,9 @@ days_till_expiry = (valid_until - datetime.utcnow().date()).days
 
 if days_till_expiry <= 4:
     try:
-        r = requests.get(args.metadata_url, allow_redirects=True)
+        r = requests.get(args.metadata_url,
+                         allow_redirects=True,
+                         verify=(not args.insecure))
         r.raise_for_status()
     except requests.exceptions.RequestException as e:
         print 'Error: {0}'.format(e)
