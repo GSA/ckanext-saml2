@@ -23,7 +23,8 @@
             <legend>{{ _('Change details') }}</legend>
             {% block user_custom_data %}
                 {% if c.allow_user_changes is not none and c.allow_user_changes %}
-                    {{ form.checkbox("user_custom_profile_data", id="user_custom_profile_data", label="I want to provide custom profile data", classes=["user_custom_profile_data"], checked=c.is_allow_update) }}
+                    {% set attrs = {'data-module': 'sso-user-allow'} %}
+                    {{ form.checkbox("user_custom_profile_data", id="user_custom_profile_data", label="I want to provide custom profile data", classes=["user_custom_profile_data"], checked=c.is_allow_update, attrs=attrs) }}
                 {% endif %}
             {% endblock %}
 

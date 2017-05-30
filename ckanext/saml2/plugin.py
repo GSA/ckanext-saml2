@@ -233,15 +233,31 @@ def saml2_user_update(context, data_dict):
         if c.allow_user_changes:
             allow_update_params = data_dict.get('allow_update')
             if allow_update_params is not None:
+                allow_update_params = p.toolkit.asbool(data_dict.get('allow_update'))
                 model.Session.query(SAML2User).filter_by(name_id=name_id).\
                     update({'allow_update': allow_update_params})
+                model.Session.commit()
+                if allow_update_params:
+                    return ckan_user_update(context, data_dict)
             elif not isinstance(c.allow_update_checkbox, str):
                 model.Session.query(SAML2User).filter_by(name_id=name_id).\
                     update({'allow_update': c.allow_update_checkbox})
-            model.Session.commit()
-            return ckan_user_update(context, data_dict)
+                model.Session.commit()
+                if c.allow_update_checkbox:
+                    return ckan_user_update(context, data_dict)
+            if 'api_version' not in context:
+                h.redirect_to('user_datasets', id=id)
         else:
-            raise logic.ValidationError({'error': ['Deny user changes in config file']})
+            user = model.User.get(id)
+            name, fullname, email = logic.get_or_bust(
+                data_dict, ['name', 'fullname', 'email'])
+            if (user.name == name and user.fullname == fullname and
+                    user.email == email):
+                if 'api_version' not in context:
+                    h.redirect_to('user_datasets', id=id)
+            else:
+                raise logic.ValidationError({'error': [
+                    "User accounts managed by Single Sign-On can't be modified"]})
     else:
         return ckan_user_update(context, data_dict)
 
