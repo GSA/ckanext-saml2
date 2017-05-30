@@ -23,17 +23,17 @@ NS = {
 parser = ArgumentParser()
 
 parser.add_argument(
-    '-url',
+    'metadata_url',
     help='URL for metadata download'
 )
 parser.add_argument(
-    '-path',
+    'local_path',
     help='Path to current metadata xml file'
 )
 
 args = parser.parse_args()
 
-tree = ET.ElementTree(file=args.path)
+tree = ET.ElementTree(file=args.local_path)
 root = tree.getroot().attrib
 valid_until = root.get('validUntil', None)
 if not valid_until:
@@ -48,9 +48,8 @@ days_till_expiry = (valid_until - datetime.utcnow().date()).days
 #print '%s days till expiry' % (days_till_expiry)
 
 if days_till_expiry <= 4:
-    tmp_filename = os.path.join(os.path.dirname(args.path), 'tmp-{0}.xml'.format(datetime.now()))
     try:
-        r = requests.get(args.url, allow_redirects=True)
+        r = requests.get(args.metadata_url, allow_redirects=True)
         r.raise_for_status()
     except requests.exceptions.RequestException as e:
         print 'Error: {0}'.format(e)
@@ -71,8 +70,11 @@ if days_till_expiry <= 4:
             idpsso.remove(element)
             #print "Removed IdP POST binding SLO config"
 
-    metadata.write(tmp_filename, encoding="utf-8")
+    # Write to temp file
+    tmp_filename = 'idp-metadata-{0}.xml'.format(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+    tmp_path = os.path.join(os.path.dirname(args.local_path), tmp_filename)
+    metadata.write(tmp_path, encoding="utf-8")
 
     # Atomically replace old with new
-    os.rename(tmp_filename, args.path)
+    os.rename(tmp_filename, args.local_path)
     #print "Replaced metadata"
