@@ -213,51 +213,45 @@ def saml2_user_delete(context, data_dict):
     ckan_user_delete(context, data_dict)
 
 
-def saml2_check_for_user_update(id):
+def saml2_set_context_variables_after_check_for_user_update(id):
     c = p.toolkit.c
+    c.allow_user_change = False
     user_info = saml2_get_user_info(id)
     if user_info is not None:
-        c.allow_user_changes = p.toolkit.asbool(
+        c.allow_user_change = p.toolkit.asbool(
             config.get('ckan.saml2.allow_user_changes', False))
         c.is_allow_update = user_info[0].allow_update
-    else:
-        c.allow_user_changes = c.is_allow_update = None
 
 
 def saml2_user_update(context, data_dict):
     id = logic.get_or_bust(data_dict, 'id')
-    c = p.toolkit.c
-    saml2_check_for_user_update(id)
     name_id = saml2_get_user_name_id(id)
     if name_id is not None:
-        if c.allow_user_changes:
-            allow_update_params = data_dict.get('allow_update')
-            if allow_update_params is not None:
-                allow_update_params = p.toolkit.asbool(data_dict.get('allow_update'))
+        c = p.toolkit.c
+        saml2_set_context_variables_after_check_for_user_update(id)
+        if c.allow_user_change:
+            checkbox_checked = data_dict.get('checkbox_checked')
+            allow_update_param = data_dict.get('allow_update')
+            if checkbox_checked is not None:
+                allow_update_param = p.toolkit.asbool(allow_update_param)
                 model.Session.query(SAML2User).filter_by(name_id=name_id).\
-                    update({'allow_update': allow_update_params})
+                    update({'allow_update': allow_update_param})
                 model.Session.commit()
-                if allow_update_params:
-                    return ckan_user_update(context, data_dict)
-            elif not isinstance(c.allow_update_checkbox, str):
-                model.Session.query(SAML2User).filter_by(name_id=name_id).\
-                    update({'allow_update': c.allow_update_checkbox})
-                model.Session.commit()
-                if c.allow_update_checkbox:
-                    return ckan_user_update(context, data_dict)
-            if 'api_version' not in context:
-                h.redirect_to('user_datasets', id=id)
-        else:
-            user = model.User.get(id)
-            name, fullname, email = logic.get_or_bust(
-                data_dict, ['name', 'fullname', 'email'])
-            if (user.name == name and user.fullname == fullname and
-                    user.email == email):
-                if 'api_version' not in context:
-                    h.redirect_to('user_datasets', id=id)
             else:
-                raise logic.ValidationError({'error': [
-                    "User accounts managed by Single Sign-On can't be modified"]})
+                if allow_update_param is not None:
+                    allow_update_param = p.toolkit.asbool(allow_update_param)
+                    model.Session.query(SAML2User).filter_by(name_id=name_id).\
+                        update({'allow_update': allow_update_param})
+                    model.Session.commit()
+
+            saml2_set_context_variables_after_check_for_user_update(id)
+            if allow_update_param or c.is_allow_update:
+                return ckan_user_update(context, data_dict)
+            return {'name': data_dict['name']}
+
+        else:
+            raise logic.ValidationError({'error': [
+                "User accounts managed by Single Sign-On can't be modified"]})
     else:
         return ckan_user_update(context, data_dict)
 
@@ -461,8 +455,9 @@ class Saml2Plugin(p.SingletonPlugin):
             return model.User.get(new_user_username)
         elif update_user:
             c = p.toolkit.c
-            saml2_check_for_user_update(data_dict.get('id', None))
-            if c.allow_user_changes and not c.is_allow_update:
+            saml2_set_context_variables_after_check_for_user_update(
+                data_dict.get('id', None))
+            if c.allow_user_change and not c.is_allow_update:
                 log.debug("Updating user: %s", data_dict)
                 p.toolkit.get_action('user_update')(context, data_dict)
         return model.User.get(user_name)
@@ -713,17 +708,5 @@ class Saml2Controller(UserController):
         return self.login()
 
     def edit(self, id=None, data=None, errors=None, error_summary=None):
-        saml2_check_for_user_update(id)
+        saml2_set_context_variables_after_check_for_user_update(id)
         return super(Saml2Controller, self).edit(id, data, errors, error_summary)
-
-    def _save_edit(self, id, context):
-        name_id = saml2_get_user_name_id(id)
-        if name_id is not None:
-            c = p.toolkit.c
-            user_custom_profile_data = p.toolkit.request.params.get(
-                                            'user_custom_profile_data')
-            if user_custom_profile_data is not None:
-                c.allow_update_checkbox = True
-            else:
-                c.allow_update_checkbox = False
-        return super(Saml2Controller, self)._save_edit(id, context)

@@ -1,41 +1,26 @@
 {% import 'macros/form.html' as form %}
 
-{% if c.allow_user_changes is none and c.is_allow_update is none %}
-    {% set attrs = {} %}
-{% else %}
-    {% if c.allow_user_changes %}
-        {% if not c.is_allow_update %}
-            {% set attrs = {'readonly': 'readonly'} %}
-        {% else %}
-            {% set attrs = {} %}
-        {% endif %}
-    {% else %}
-        {% set attrs = {'readonly': 'readonly'} %}
-    {% endif %}
-{% endif %}
-
-
 {% block user_edit_form %}
-    <form id="user-edit-form" class="dataset-form form-horizontal" method="post" action="{{ action }}">
+    <form id="user-edit-form" class="dataset-form form-horizontal" data-module="user-edit-form-sso" data-module-config_user_change="{{c.allow_user_change}}" data-module-name_id="{{ h.saml2_get_user_name_id(data.name) }}" data-module-user_allow_update="{{c.is_allow_update}}" method="post" action="{{ action }}">
       {{ form.errors(error_summary) }}
       {% block user_edit_form_details %}
           <fieldset>
             <legend>{{ _('Change details') }}</legend>
             {% block user_custom_data %}
-                {% if c.allow_user_changes is not none and c.allow_user_changes %}
-                    {% set attrs = {'data-module': 'sso-user-allow'} %}
-                    {{ form.checkbox("user_custom_profile_data", id="user_custom_profile_data", label="I want to provide custom profile data", classes=["user_custom_profile_data"], checked=c.is_allow_update, attrs=attrs) }}
+                {% if c.allow_user_change %}
+                    <input name="checkbox_checked" type="hidden" value="False"/>
+                    {{ form.checkbox("allow_update", id="user_custom_profile_data", label="I want to provide custom profile data", classes=["user_custom_profile_data"], value=c.is_allow_update, checked=c.is_allow_update) }}
                 {% endif %}
             {% endblock %}
 
             {% block user_edit_form_default_info %}
-                {{ form.input('name', label=_('Username'), id='field-username', value=data.name, error=errors.name, classes=['control-medium'], is_required=true, attrs=attrs) }}
+                {{ form.input('name', label=_('Username'), id='field-username', value=data.name, error=errors.name, classes=['control-medium'], is_required=true) }}
 
-                {{ form.input('fullname', label=_('Full name'), id='field-fullname', value=data.fullname, error=errors.fullname, placeholder=_('eg. Joe Bloggs'), classes=['control-medium'], attrs=attrs) }}
+                {{ form.input('fullname', label=_('Full name'), id='field-fullname', value=data.fullname, error=errors.fullname, placeholder=_('eg. Joe Bloggs'), classes=['control-medium']) }}
 
-                {{ form.input('email', label=_('Email'), id='field-email', type='email', value=data.email, error=errors.email, placeholder=_('eg. joe@example.com'), classes=['control-medium'], is_required=true, attrs=attrs) }}
+                {{ form.input('email', label=_('Email'), id='field-email', type='email', value=data.email, error=errors.email, placeholder=_('eg. joe@example.com'), classes=['control-medium'], is_required=true) }}
                 {% block user_edit_form_about %}
-                    {{ form.markdown('about', label=_('About'), id='field-about', value=data.about, error=errors.about, placeholder=_('A little information about yourself'), attrs=attrs) }}
+                    {{ form.markdown('about', label=_('About'), id='field-about', value=data.about, error=errors.about, placeholder=_('A little information about yourself')) }}
                 {% endblock %}
 
                 {% if c.show_email_notifications %}
@@ -51,15 +36,12 @@
       {% block user_edit_form_password %}
           <fieldset>
             <legend>{{ _('Change password') }}</legend>
-
-            {% set attrs = {'autocomplete': 'off'} %}
-            {% do attrs.update(readonly="readonly") if c.is_allow_update is not none %}
             {% block user_edit_form_old_password %}
-                {{ form.input('old_password', type='password', label=_('Old Password'), id='field-password', value=data.oldpassword, error=errors.oldpassword, classes=['control-medium'], attrs=attrs) }}
+                {{ form.input('old_password', type='password', label=_('Old Password'), id='field-password', value=data.oldpassword, error=errors.oldpassword, classes=['control-medium'], attrs={'autocomplete': 'off'}) }}
             {% endblock %}
-            {{ form.input('password1', type='password', label=_('Password'), id='field-password', value=data.password1, error=errors.password1, classes=['control-medium'], attrs=attrs) }}
+            {{ form.input('password1', type='password', label=_('Password'), id='field-password', value=data.password1, error=errors.password1, classes=['control-medium'], attrs={'autocomplete': 'off'}) }}
 
-            {{ form.input('password2', type='password', label=_('Confirm Password'), id='field-password-confirm', value=data.password2, error=errors.password2, classes=['control-medium'], attrs=attrs) }}
+            {{ form.input('password2', type='password', label=_('Confirm Password'), id='field-password-confirm', value=data.password2, error=errors.password2, classes=['control-medium'], attrs={'autocomplete': 'off'}) }}
           </fieldset>
       {% endblock %}
 
