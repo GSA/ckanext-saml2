@@ -237,23 +237,28 @@ def saml2_user_update(context, data_dict):
                 model.Session.query(SAML2User).filter_by(name_id=name_id).\
                     update({'allow_update': allow_update_param})
                 model.Session.commit()
+                if not allow_update_param:
+                    return {'name': data_dict['id']}
             else:
                 if allow_update_param is not None:
                     allow_update_param = p.toolkit.asbool(allow_update_param)
                     model.Session.query(SAML2User).filter_by(name_id=name_id).\
                         update({'allow_update': allow_update_param})
                     model.Session.commit()
-
-            saml2_set_context_variables_after_check_for_user_update(id)
-            if allow_update_param or c.is_allow_update:
-                return ckan_user_update(context, data_dict)
-            return {'name': data_dict['name']}
+                    if not allow_update_param:
+                        return {'name': data_dict['id']}
+                else:
+                    if not c.is_allow_update and context.get('ignore_auth'):
+                        return ckan_user_update(context, data_dict)
+                    return {'name': data_dict['id']}
+            return ckan_user_update(context, data_dict)
 
         else:
             raise logic.ValidationError({'error': [
                 "User accounts managed by Single Sign-On can't be modified"]})
     else:
         return ckan_user_update(context, data_dict)
+
 
 
 class Saml2Plugin(p.SingletonPlugin):
