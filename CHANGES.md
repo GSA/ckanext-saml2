@@ -2,7 +2,17 @@
 
 ## Next release
 
-* Added a script ckanext/saml2/admin/fresh_idp_metadata.py to keep IdP metadata up-to-date
+* Added a script ckanext/saml2/admin/fresh_idp_metadata.py to keep IdP
+  metadata up-to-date
+
+### Deprecations and Breaking Changes
+
+* NameIDs are now stored in the saml2_user table, instead of as the
+  user's username. No update method for existing data is provided.
+* Deprecated the `saml2.local_email_domains` and
+  `saml2.sso_email_domains` configuration directives in favour of a
+  direct check for a NameID in the saml2_user table.
+
 
 ## 0.2.0
 
