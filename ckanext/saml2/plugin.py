@@ -45,25 +45,6 @@ def user_create(context, data_dict):
 
 
 @logic.auth_sysadmins_check
-def user_update(context, data_dict):
-    """Deny user changes."""
-    current_user = context['auth_user_obj']
-
-    if isinstance(data_dict, model.User):
-        id = data_dict.id
-    else:
-        id = logic.get_or_bust(data_dict, 'id')
-    modified_user = model.User.get(id)
-
-    if is_local_user(modified_user):
-        if current_user.sysadmin:
-            return {'success': True}
-        return logic.auth.update.user_update(context, data_dict)
-    msg = p.toolkit._('Users cannot be edited.')
-    return _no_permissions(context, msg)
-
-
-@logic.auth_sysadmins_check
 @logic.auth_allow_anonymous_access
 def user_reset(context, data_dict):
     """Deny user reset."""
@@ -619,7 +600,6 @@ class Saml2Plugin(p.SingletonPlugin):
         """We need to prevent some actions being authorized."""
         return {
             'user_create': user_create,
-            'user_update': user_update,
             'user_reset': user_reset,
             'user_delete': user_delete,
             'request_reset': request_reset,
