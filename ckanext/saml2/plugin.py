@@ -45,25 +45,6 @@ def user_create(context, data_dict):
 
 
 @logic.auth_sysadmins_check
-def user_update(context, data_dict):
-    """Deny user changes."""
-    current_user = context['auth_user_obj']
-
-    if isinstance(data_dict, model.User):
-        id = data_dict.id
-    else:
-        id = logic.get_or_bust(data_dict, 'id')
-    modified_user = model.User.get(id)
-
-    if is_local_user(modified_user):
-        if current_user.sysadmin:
-            return {'success': True}
-        return logic.auth.update.user_update(context, data_dict)
-    msg = p.toolkit._('Users cannot be edited.')
-    return _no_permissions(context, msg)
-
-
-@logic.auth_sysadmins_check
 @logic.auth_allow_anonymous_access
 def user_reset(context, data_dict):
     """Deny user reset."""
@@ -113,35 +94,10 @@ def delete_cookies():
 
 def is_local_user(userobj):
     """
-    Check whether current user shouldn't use sso and such things.
-
-    :saml2.local_email_domains: - list of space separated domains
-    in config file that treated as local
-    :saml2.sso_email_domains: - list of space separated domains
-    in config file that treated as sso provisioned
-
-    If both are defined and not empty, first one has more precedence.
-
-    Should return (bool)True if user allowed to use native login system and
-    anything else, that sso users can't do
+    Returns True if userobj is not a SAML2 user.
 
     """
-    _local_domains = config.get('saml2.local_email_domains', '')
-    _sso_domains = config.get('saml2.sso_email_domains', '')
-
-    # precedence defined in next two lines
-    is_local_check = True if _local_domains else False
-    checked_domains = (_local_domains or _sso_domains).split()
-
-    # there are no any rules for separating users, so let's asuume
-    # that all users are created with sso
-    if not checked_domains:
-        return False
-
-    if userobj:
-        email = str(userobj.email)
-        return bool(filter(
-            lambda d: email.endswith(d), checked_domains)) == is_local_check
+    return True if saml2_get_user_info(userobj.id) is None else False
 
 
 def assign_default_role(context, user_name):
@@ -644,7 +600,6 @@ class Saml2Plugin(p.SingletonPlugin):
         """We need to prevent some actions being authorized."""
         return {
             'user_create': user_create,
-            'user_update': user_update,
             'user_reset': user_reset,
             'user_delete': user_delete,
             'request_reset': request_reset,
