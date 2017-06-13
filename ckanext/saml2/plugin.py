@@ -283,16 +283,18 @@ class Saml2Plugin(p.SingletonPlugin):
         environ = p.toolkit.request.environ
 
         name_id = environ.get('REMOTE_USER', '')
-        c.user = unserialise_nameid(name_id).text
-        if not c.user:
-            log.info("Couldn't decode nameid, giving up")
+        log.debug("REMOTE_USER = \"{0}\"".format(name_id))
+
+        name_id = unserialise_nameid(name_id).text
+        if not name_id:
+            log.info('Ignoring REMOTE_USER - does not look like a NameID')
             return
+        log.debug('NameId: %s' % (name_id))
 
-        user_info = saml2_get_user_info(c.user)
-        if user_info is not None:
-            c.user = user_info[1].name
+        saml2_user_info = saml2_get_user_info(name_id)
+        if saml2_user_info is not None:
+            c.user = saml2_user_info[1].name
 
-        log.debug("REMOTE_USER = \"{0}\"".format(c.user))
         log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
 
         # get the actual user info from the saml2auth client
