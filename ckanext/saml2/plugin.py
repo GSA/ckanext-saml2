@@ -556,10 +556,10 @@ class Saml2Plugin(p.SingletonPlugin):
         if not sp_slo or userobj and is_local_user(userobj):
             plugins = environ['repoze.who.plugins']
             friendlyform_plugin = plugins.get('friendlyform')
-            rememberer_name = friendlyform_plugin.rememberer_name
+            rememberer = environ['repoze.who.plugins'][friendlyform_plugin.rememberer_name]
             domain = p.toolkit.request.environ['HTTP_HOST']
-            base.response.delete_cookie(rememberer_name, domain='.' + domain)
-            base.response.delete_cookie(rememberer_name)
+            base.response.delete_cookie(rememberer.cookie_name, domain='.' + domain)
+            base.response.delete_cookie(rememberer.cookie_name)
             h.redirect_to(controller='home', action='index')
 
         subject_id = environ["repoze.who.identity"]['repoze.who.userid']
