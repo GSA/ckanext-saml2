@@ -88,6 +88,8 @@ up-to-date automatically run the following script:
 ```
 /usr/lib/ckan/default/bin/python ckanext/saml2/admin/fresh_idp_metadata.py -url metadata_url -path local_path
 ```
+CKAN must be reloaded after the metadata is updated, by, for example, reloading httpd.
+
 
 #### Command line
 
