@@ -1,6 +1,6 @@
 # ckanext-saml2 change log
 
-## Next release
+## 0.3.0
 
 * Added a script ckanext/saml2/admin/fresh_idp_metadata.py to keep IdP
   metadata up-to-date
