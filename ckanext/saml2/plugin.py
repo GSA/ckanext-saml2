@@ -1,8 +1,8 @@
 import logging
 import uuid
-
-from saml2 import BINDING_HTTP_REDIRECT
 from ckan.common import _
+from saml2 import BINDING_HTTP_REDIRECT
+from ckan.common import _, request
 import pylons.config as config
 
 import ckan.plugins as p
@@ -17,6 +17,12 @@ from ckan.controllers.user import UserController
 from routes.mapper import SubMapper
 from saml2.ident import decode as unserialise_nameid
 from saml2.s2repoze.plugins.sp import SAML2Plugin
+from ckan.logic.action.create import _get_random_username_from_email
+from ckanext.saml2.model.saml2_user import SAML2User
+from sqlalchemy.sql.expression import or_
+from ckan.logic.action.delete import user_delete as ckan_user_delete
+from ckan.logic.action.update import user_update as ckan_user_update
+
 
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
@@ -35,25 +41,6 @@ def user_create(context, data_dict):
     msg = p.toolkit._('Users cannot be created.')
     if NATIVE_LOGIN_ENABLED:
         return logic.auth.create.user_create(context, data_dict)
-    return _no_permissions(context, msg)
-
-
-@logic.auth_sysadmins_check
-def user_update(context, data_dict):
-    """Deny user changes."""
-    current_user = context['auth_user_obj']
-
-    if isinstance(data_dict, model.User):
-        id = data_dict.id
-    else:
-        id = logic.get_or_bust(data_dict, 'id')
-    modified_user = model.User.get(id)
-
-    if is_local_user(modified_user):
-        if current_user.sysadmin:
-            return {'success': True}
-        return logic.auth.update.user_update(context, data_dict)
-    msg = p.toolkit._('Users cannot be edited.')
     return _no_permissions(context, msg)
 
 
@@ -107,35 +94,10 @@ def delete_cookies():
 
 def is_local_user(userobj):
     """
-    Check whether current user shouldn't use sso and such things.
-
-    :saml2.local_email_domains: - list of space separated domains
-    in config file that treated as local
-    :saml2.sso_email_domains: - list of space separated domains
-    in config file that treated as sso provisioned
-
-    If both are defined and not empty, first one has more precedence.
-
-    Should return (bool)True if user allowed to use native login system and
-    anything else, that sso users can't do
+    Returns True if userobj is not a SAML2 user.
 
     """
-    _local_domains = config.get('saml2.local_email_domains', '')
-    _sso_domains = config.get('saml2.sso_email_domains', '')
-
-    # precedence defined in next two lines
-    is_local_check = True if _local_domains else False
-    checked_domains = (_local_domains or _sso_domains).split()
-
-    # there are no any rules for separating users, so let's asuume
-    # that all users are created with sso
-    if not checked_domains:
-        return False
-
-    if userobj:
-        email = str(userobj.email)
-        return bool(filter(
-            lambda d: email.endswith(d), checked_domains)) == is_local_check
+    return True if saml2_get_user_info(userobj.id) is None else False
 
 
 def assign_default_role(context, user_name):
@@ -176,6 +138,89 @@ def get_came_from(relay_state):
     return came_from.encode('utf8')
 
 
+def saml2_get_userid_by_name_id(id):
+    user_info = model.Session.query(SAML2User).\
+        filter(SAML2User.name_id == id).first()
+    return user_info.id if user_info is not None else user_info
+
+
+def saml2_get_user_name_id(id):
+    user_info = saml2_get_user_info(id)
+    return user_info if user_info is None else user_info[0].name_id
+
+
+def saml2_get_user_info(id):
+    query = model.Session.query(SAML2User, model.User).\
+        join(model.User, model.User.id == SAML2User.id).\
+        filter(or_(SAML2User.name_id == id,
+                   SAML2User.id == id,
+                   model.User.name == id)).first()
+    return query
+
+
+def saml2_user_delete(context, data_dict):
+    if not data_dict.get('id') and data_dict.get('nameid'):
+            saml2_user_id = saml2_get_userid_by_name_id(data_dict['nameid'])
+            if saml2_user_id is not None:
+                data_dict['id'] = saml2_user_id
+            else:
+                raise logic.NotFound('NameID "{id}" was not found.'.format(
+                                            id=data_dict['nameid']))
+    ckan_user_delete(context, data_dict)
+
+
+def saml2_set_context_variables_after_check_for_user_update(id):
+    c = p.toolkit.c
+    c.allow_user_change = False
+    user_info = saml2_get_user_info(id)
+    if user_info is not None:
+        c.allow_user_change = p.toolkit.asbool(
+            config.get('ckan.saml2.allow_user_changes', False))
+        c.is_allow_update = user_info[0].allow_update
+
+
+def saml2_user_update(context, data_dict):
+    if data_dict.get('password1', '') != '' or data_dict.get('password2', '') != '':
+        raise logic.ValidationError({'password': [
+            "This field cannot be modified."]})
+
+    id = logic.get_or_bust(data_dict, 'id')
+    name_id = saml2_get_user_name_id(id)
+    if name_id is not None:
+        c = p.toolkit.c
+        saml2_set_context_variables_after_check_for_user_update(id)
+        if c.allow_user_change:
+            checkbox_checked = data_dict.get('checkbox_checked')
+            allow_update_param = data_dict.get('allow_update')
+            if checkbox_checked is not None:
+                allow_update_param = p.toolkit.asbool(allow_update_param)
+                model.Session.query(SAML2User).filter_by(name_id=name_id).\
+                    update({'allow_update': allow_update_param})
+                model.Session.commit()
+                if not allow_update_param:
+                    return {'name': data_dict['id']}
+            else:
+                if allow_update_param is not None:
+                    allow_update_param = p.toolkit.asbool(allow_update_param)
+                    model.Session.query(SAML2User).filter_by(name_id=name_id).\
+                        update({'allow_update': allow_update_param})
+                    model.Session.commit()
+                    if not allow_update_param:
+                        return {'name': data_dict['id']}
+                else:
+                    if not c.is_allow_update and context.get('ignore_auth'):
+                        return ckan_user_update(context, data_dict)
+                    return {'name': data_dict['id']}
+            return ckan_user_update(context, data_dict)
+
+        else:
+            raise logic.ValidationError({'error': [
+                "User accounts managed by Single Sign-On can't be modified"]})
+    else:
+        return ckan_user_update(context, data_dict)
+
+
+
 class Saml2Plugin(p.SingletonPlugin):
     """SAML2 plugin."""
 
@@ -184,6 +229,8 @@ class Saml2Plugin(p.SingletonPlugin):
     p.implements(p.IAuthFunctions, inherit=True)
     p.implements(p.IConfigurer, inherit=True)
     p.implements(p.IConfigurable)
+    p.implements(p.ITemplateHelpers)
+    p.implements(p.IActions)
 
     def update_config(self, config):
         """Update environment config."""
@@ -213,6 +260,8 @@ class Saml2Plugin(p.SingletonPlugin):
                       action='saml2_unauthorized')
             m.connect('saml2_slo', '/slo', action='slo')
             m.connect('staff_login', '/service/login', action='staff_login')
+            m.connect('saml2_user_edit', '/user/edit/{id:.*}', action='edit',
+                      ckan_icon='cog')
         return map
 
     def make_password(self):
@@ -234,12 +283,18 @@ class Saml2Plugin(p.SingletonPlugin):
         environ = p.toolkit.request.environ
 
         name_id = environ.get('REMOTE_USER', '')
-        c.user = unserialise_nameid(name_id).text
-        if not c.user:
-            log.info("Couldn't decode nameid, giving up")
-            return
+        log.debug("REMOTE_USER = \"{0}\"".format(name_id))
 
-        log.debug("REMOTE_USER = \"{0}\"".format(c.user))
+        name_id = unserialise_nameid(name_id).text
+        if not name_id:
+            log.info('Ignoring REMOTE_USER - does not look like a NameID')
+            return
+        log.debug('NameId: %s' % (name_id))
+
+        saml2_user_info = saml2_get_user_info(name_id)
+        if saml2_user_info is not None:
+            c.user = saml2_user_info[1].name
+
         log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
 
         # get the actual user info from the saml2auth client
@@ -249,7 +304,8 @@ class Saml2Plugin(p.SingletonPlugin):
             # This is a request in an existing session so no need to provision
             # an account, set c.userobj and return
             c.userobj = model.User.get(c.user)
-            c.user = c.userobj.name
+            if c.userobj is not None:
+                c.user = c.userobj.name
             return
 
         try:
@@ -319,7 +375,6 @@ class Saml2Plugin(p.SingletonPlugin):
     def _create_or_update_user(self, user_name, saml_info):
         """Create or update the subject's user account and return the user
         object"""
-
         data_dict = {}
         user_schema = schema.default_update_user_schema()
 
@@ -351,17 +406,27 @@ class Saml2Plugin(p.SingletonPlugin):
         user_schema['id'] = [p.toolkit.get_validator('not_empty')]
         user_schema['name'] = [p.toolkit.get_validator('not_empty')]
         context = {'schema': user_schema, 'ignore_auth': True}
-
         if is_new_user:
+            new_user_username = _get_random_username_from_email(
+                                            saml_info['email'][0])
+            name_id = saml_info['id'][0]
+            data_dict['name'] = new_user_username
+            data_dict['id'] = unicode(uuid.uuid4())
             log.debug("Creating user: %s", data_dict)
             data_dict['password'] = self.make_password()
-            p.toolkit.get_action('user_create')(context, data_dict)
-            assign_default_role(context, user_name)
-
+            new_user = p.toolkit.get_action('user_create')(context, data_dict)
+            assign_default_role(context, new_user_username)
+            model.Session.add(SAML2User(id=new_user['id'],
+                                        name_id=name_id))
+            model.Session.commit()
+            return model.User.get(new_user_username)
         elif update_user:
-            log.debug("Updating user: %s", data_dict)
-            p.toolkit.get_action('user_update')(context, data_dict)
-
+            c = p.toolkit.c
+            saml2_set_context_variables_after_check_for_user_update(
+                data_dict.get('id', None))
+            if c.allow_user_change and not c.is_allow_update:
+                log.debug("Updating user: %s", data_dict)
+                p.toolkit.get_action('user_update')(context, data_dict)
         return model.User.get(user_name)
 
     def update_organization_membership(self, org_roles):
@@ -489,14 +554,14 @@ class Saml2Plugin(p.SingletonPlugin):
         environ = p.toolkit.request.environ
 
         userobj = p.toolkit.c.userobj
-        sp_slo = p.toolkit.asbool(config.get('saml2.sp_initiates_slo', True))
-        if not sp_slo or userobj and is_local_user(userobj):
+        sp_initiates_slo = p.toolkit.asbool(config.get('saml2.sp_initiates_slo', True))
+        if not sp_initiates_slo or userobj and is_local_user(userobj):
             plugins = environ['repoze.who.plugins']
             friendlyform_plugin = plugins.get('friendlyform')
-            rememberer_name = friendlyform_plugin.rememberer_name
+            rememberer = environ['repoze.who.plugins'][friendlyform_plugin.rememberer_name]
             domain = p.toolkit.request.environ['HTTP_HOST']
-            base.response.delete_cookie(rememberer_name, domain='.' + domain)
-            base.response.delete_cookie(rememberer_name)
+            base.response.delete_cookie(rememberer.cookie_name, domain='.' + domain)
+            base.response.delete_cookie(rememberer.cookie_name)
             h.redirect_to(controller='home', action='index')
 
         subject_id = environ["repoze.who.identity"]['repoze.who.userid']
@@ -541,10 +606,20 @@ class Saml2Plugin(p.SingletonPlugin):
         """We need to prevent some actions being authorized."""
         return {
             'user_create': user_create,
-            'user_update': user_update,
             'user_reset': user_reset,
             'user_delete': user_delete,
             'request_reset': request_reset,
+        }
+
+    def get_helpers(self):
+        return {
+            'saml2_get_user_name_id': saml2_get_user_name_id
+        }
+
+    def get_actions(self):
+        return {
+            'user_delete': saml2_user_delete,
+            'user_update': saml2_user_update
         }
 
 
@@ -597,3 +672,7 @@ class Saml2Controller(UserController):
     def staff_login(self):
         """Default login page for staff members."""
         return self.login()
+
+    def edit(self, id=None, data=None, errors=None, error_summary=None):
+        saml2_set_context_variables_after_check_for_user_update(id)
+        return super(Saml2Controller, self).edit(id, data, errors, error_summary)

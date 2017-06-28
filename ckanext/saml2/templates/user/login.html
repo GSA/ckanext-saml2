@@ -1,7 +1,7 @@
 {% ckan_extends %}
 
 {% block form %}
-  <a href="{{ h.url_for(controller='user', action='login', type='sso', came_from=c.came_from) }}" class="btn btn-primary">{{ c.sso_button_text or _('Login with SSO') }}</a>
+  <a href="{{ h.url_for(controller='user', action='login', type='sso', came_from=c.came_from or '/dashboard') }}" class="btn btn-primary">{{ c.sso_button_text or _('Login with SSO') }}</a>
   <h2>or</h2>
   {{ super() }}
 {% endblock %}
