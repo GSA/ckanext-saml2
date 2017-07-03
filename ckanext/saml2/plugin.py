@@ -371,6 +371,7 @@ class Saml2Plugin(p.SingletonPlugin):
                 came_from = get_came_from(relay_state)
                 if came_from:
                     h.redirect_to(came_from)
+            h.redirect_to('/dashboard')
 
     def _create_or_update_user(self, user_name, saml_info):
         """Create or update the subject's user account and return the user
