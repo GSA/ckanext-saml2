@@ -1,7 +1,6 @@
 ckanext-saml2
 ==============
-
-SAML2 Athentication extension
+An extension to enable Single Sign On(SSO) for CKAN data portals via SAML2 Authentication.
 
 #### Requirements
 The following packages are required: memcached, repoze, m2crypto, xmlsec1, xmlsec1-openssl, swig

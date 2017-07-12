@@ -62,9 +62,9 @@ def request_reset(context, data_dict):
     method = p.toolkit.request.method
     username = p.toolkit.request.params.get('user', '')
     if NATIVE_LOGIN_ENABLED:
-        if method == 'GET' or (
-                method == 'POST' and
-                is_local_user(model.User.get(username)) is not False):
+        user = model.User.get(username)
+        if method == 'GET' or user is None or (
+                method == 'POST' and is_local_user(user)):
             return logic.auth.get.request_reset(context, data_dict)
     return _no_permissions(context, msg)
 
