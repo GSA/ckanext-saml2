@@ -63,6 +63,11 @@ saml2.organization_mapping =
 saml2.create_missing_orgs = True
 ```
 
+- By default, when User logins in, SP checks he's Organizations provided and removes from Organizations that hanven't been provided through login process. To avoid that, you can add a field `saml2.rvm_users_from_orgs` and set it to `false` in your config, so that User won't be removed from Organizations that he's been added to. By default this field is set to `true`.
+```
+saml2.rvm_users_from_orgs = false
+```
+
 - The SP initiates SLO on CKAN logout by default. In order to make this more prominent you can add the directive `saml2.sp_initiates_slo` in ckan configuration file. Values `true`, `yes`, `on`, `y`, `t`, `1` are treated as true. To disable SP-initiated SLO and only logout from CKAN, set this directive to `false`, `no`, `off`, `n`, `f`, or `0`.
 ```
 saml2.sp_initiates_slo = true

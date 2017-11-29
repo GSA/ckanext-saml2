@@ -452,7 +452,8 @@ class Saml2Plugin(p.SingletonPlugin):
 
         create_orgs = p.toolkit.asbool(
             config.get('saml2.create_missing_orgs', False))
-
+        remove_user_from_orgs = p.toolkit.asbool(
+            config.get('saml2.rvm_users_from_orgs', True))
         context = {'ignore_auth': True}
         site_user = p.toolkit.get_action('get_site_user')(context, {})
         c = p.toolkit.c
@@ -500,9 +501,10 @@ class Saml2Plugin(p.SingletonPlugin):
                 p.toolkit.get_action('member_create')(
                     member_context, member_dict)
             else:
-                # delete membership
-                p.toolkit.get_action('member_delete')(
-                    member_context, member_dict)
+                if remove_user_from_orgs:
+                    # delete membership
+                    p.toolkit.get_action('member_delete')(
+                        member_context, member_dict)
 
     def update_data_dict(self, data_dict, mapping, saml_info):
         """Updates data_dict with values from saml_info according to
