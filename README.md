@@ -63,7 +63,7 @@ saml2.organization_mapping =
 saml2.create_missing_orgs = True
 ```
 
-- By default, when User logins in, SP checks he's Organizations provided and removes from Organizations that hanven't been provided through login process. To avoid that, you can add a field `saml2.rvm_users_from_orgs` and set it to `false` in your config, so that User won't be removed from Organizations that he's been added to. By default this field is set to `true`.
+- By default, when User logins in, SP checks he's Organizations provided and removes from Organizations that haven't been provided through login process. To avoid that, you can add a field `saml2.rvm_users_from_orgs` and set it to `false` in your config, so that User won't be removed from Organizations that he's been added to. By default this field is set to `true`.
 ```
 saml2.rvm_users_from_orgs = false
 ```
