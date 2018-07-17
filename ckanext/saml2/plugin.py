@@ -20,6 +20,7 @@ from saml2.s2repoze.plugins.sp import SAML2Plugin
 from ckan.logic.action.create import _get_random_username_from_email
 from ckanext.saml2.model.saml2_user import SAML2User
 from sqlalchemy.sql.expression import or_
+from sqlalchemy import func
 from ckan.logic.action.delete import user_delete as ckan_user_delete
 from ckan.logic.action.update import user_update as ckan_user_update
 
@@ -27,6 +28,15 @@ from ckan.logic.action.update import user_update as ckan_user_update
 log = logging.getLogger('ckanext.saml2')
 DELETE_USERS_PERMISSION = 'delete_users'
 NATIVE_LOGIN_ENABLED = p.toolkit.asbool(config.get('saml2.enable_native_login'))
+
+
+def _take_from_saml_or_user(key, saml_info, data_dict):
+    if key in saml_info:
+        return saml_info[key][0]
+    elif key in data_dict:
+        return data_dict[key]
+    else:
+        raise KeyError('There are no [{}] neither in saml_info nor in data_dict'.format(key))
 
 
 def _no_permissions(context, msg):
@@ -152,7 +162,7 @@ def saml2_get_user_name_id(id):
 def saml2_get_user_info(id):
     query = model.Session.query(SAML2User, model.User).\
         join(model.User, model.User.id == SAML2User.id).\
-        filter(or_(SAML2User.name_id == id,
+        filter(or_(func.lower(SAML2User.name_id) == func.lower(id),
                    SAML2User.id == id,
                    model.User.name == id)).first()
     return query
@@ -408,9 +418,9 @@ class Saml2Plugin(p.SingletonPlugin):
         user_schema['name'] = [p.toolkit.get_validator('not_empty')]
         context = {'schema': user_schema, 'ignore_auth': True}
         if is_new_user:
-            new_user_username = _get_random_username_from_email(
-                                            saml_info['email'][0])
-            name_id = saml_info['id'][0]
+            email = _take_from_saml_or_user('email', saml_info, data_dict)
+            new_user_username = _get_random_username_from_email(email)
+            name_id = _take_from_saml_or_user('id', saml_info, data_dict)
             data_dict['name'] = new_user_username
             data_dict['id'] = unicode(uuid.uuid4())
             log.debug("Creating user: %s", data_dict)
