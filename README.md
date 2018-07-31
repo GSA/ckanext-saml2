@@ -73,6 +73,11 @@ saml2.rvm_users_from_orgs = false
 saml2.disable_organization_membership = True
 ```
 
+- When User logins, it redirects him to Dashboard. This option allows to set another URL for redirecting. By default it set to `/dashboard`.
+```
+saml2.redirect_after_login = '/'
+```
+
 - The SP initiates SLO on CKAN logout by default. In order to make this more prominent you can add the directive `saml2.sp_initiates_slo` in ckan configuration file. Values `true`, `yes`, `on`, `y`, `t`, `1` are treated as true. To disable SP-initiated SLO and only logout from CKAN, set this directive to `false`, `no`, `off`, `n`, `f`, or `0`.
 ```
 saml2.sp_initiates_slo = true
