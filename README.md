@@ -68,6 +68,11 @@ saml2.create_missing_orgs = True
 saml2.rvm_users_from_orgs = false
 ```
 
+- When User logins, ckanext-saml2 tries to create/update Organization Membership for him. This option allow to avoid Orgnization Membership create/update stage. By default it set to `False`.
+```
+saml2.disable_organization_membership = True
+```
+
 - The SP initiates SLO on CKAN logout by default. In order to make this more prominent you can add the directive `saml2.sp_initiates_slo` in ckan configuration file. Values `true`, `yes`, `on`, `y`, `t`, `1` are treated as true. To disable SP-initiated SLO and only logout from CKAN, set this directive to `false`, `no`, `off`, `n`, `f`, or `0`.
 ```
 saml2.sp_initiates_slo = true

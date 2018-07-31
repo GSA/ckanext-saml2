@@ -367,6 +367,10 @@ class Saml2Plugin(p.SingletonPlugin):
             }
             update_membership = True
 
+        disable_organization_membership = config.get('saml2.disable_organization_membership', False)
+        if disable_organization_membership:
+            update_membership = False
+
         if update_membership:
             self.update_organization_membership(org_roles)
 
