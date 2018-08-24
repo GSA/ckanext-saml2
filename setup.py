@@ -20,7 +20,7 @@ setup(
 	zip_safe=False,
 	install_requires=[
 		# -*- Extra requirements: -*-
-        'inotify_simple'
+        'inotify_simple',
         'repoze.who==1.0.18',
         'python-memcached==1.48',
 	],
