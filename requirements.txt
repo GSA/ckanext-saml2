@@ -1,1 +1,1 @@
--e git+https://github.com/tobes/pysaml2.git@fixes#egg=pysaml2
+-e git+https://github.com/GSA/pysaml2.git@max#egg=pysaml2
