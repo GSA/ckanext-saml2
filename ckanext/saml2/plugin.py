@@ -384,7 +384,7 @@ class Saml2Plugin(p.SingletonPlugin):
             if relay_state:
                 came_from = get_came_from(relay_state)
                 if came_from:
-                    h.redirect_to(came_from)
+                    h.redirect_to(h.url_for(came_from))
 
             redirect_after_login = config.get('saml2.redirect_after_login', '/dashboard')
             h.redirect_to(redirect_after_login)
