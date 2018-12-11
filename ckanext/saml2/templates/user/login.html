@@ -1,0 +1,13 @@
+{% ckan_extends %}
+
+{% block form %}
+  <a href="{{ h.url_for(controller='user', action='login', type='sso', came_from=c.came_from or '/dashboard') }}" class="btn btn-primary">{{ c.sso_button_text or _('Login with SSO') }}</a>
+  <h2>or</h2>
+  {{ super() }}
+{% endblock %}
+
+{% block help_forgotten %}
+    {% if h.check_access('user_reset') %}
+        {{ super() }}
+    {% endif %}
+{% endblock %}

@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-version = '0.1'
+version = '0.3.0'
 
 setup(
 	name='ckanext-saml2',
@@ -27,5 +27,7 @@ setup(
         [ckan.plugins]
 	# Add plugins here, eg
 	saml2=ckanext.saml2.plugin:Saml2Plugin
+	[paste.paster_command]
+	saml2=ckanext.saml2.command:Saml2Command
 	""",
 )
