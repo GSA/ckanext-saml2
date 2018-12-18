@@ -21,10 +21,12 @@ CONFIG = {
                                             BINDING_HTTP_REDIRECT)],
             },
             'allow_unsolicited': True,
-            'optional_attributes': [],
+            'required_attributes': ['maxEmail'],
             'idp': [idp_url],
+            'name_id_format': 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
         }
     },
+    'allow_unknown_attributes': True,
     'debug': 0,
     'key_file': config_path + '/pki/mykey.pem',
     'cert_file': config_path + '/pki/mycert.pem',
