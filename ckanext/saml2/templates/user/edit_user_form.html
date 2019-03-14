@@ -1,6 +1,7 @@
 {% import 'macros/form.html' as form %}
 
 {% block user_edit_form %}
+    {% set saml2_allow = h.saml2_get_is_allow_update(data.id) %}
     <form id="user-edit-form" class="dataset-form form-horizontal" data-module="user-edit-form-sso" data-module-config_user_change="{{c.allow_user_change}}" data-module-name_id="{{ h.saml2_get_user_name_id(data.name) }}" data-module-user_allow_update="{{c.is_allow_update}}" method="post" action="{{ action }}">
       {{ form.errors(error_summary) }}
       {% block user_edit_form_details %}

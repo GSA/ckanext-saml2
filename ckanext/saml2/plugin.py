@@ -159,6 +159,10 @@ def saml2_get_user_name_id(id):
     return user_info if user_info is None else user_info[0].name_id
 
 
+def saml2_get_is_allow_update(id):
+    saml2_set_context_variables_after_check_for_user_update(id)
+
+
 def saml2_get_user_info(id):
     query = model.Session.query(SAML2User, model.User).\
         join(model.User, model.User.id == SAML2User.id).\
@@ -270,8 +274,7 @@ class Saml2Plugin(p.SingletonPlugin):
                       action='saml2_unauthorized')
             m.connect('saml2_slo', '/slo', action='slo')
             m.connect('staff_login', '/service/login', action='staff_login')
-            m.connect('saml2_user_edit', '/user/edit/{id:.*}', action='edit',
-                      ckan_icon='cog')
+
         return map
 
     def make_password(self):
@@ -632,7 +635,8 @@ class Saml2Plugin(p.SingletonPlugin):
 
     def get_helpers(self):
         return {
-            'saml2_get_user_name_id': saml2_get_user_name_id
+            'saml2_get_user_name_id': saml2_get_user_name_id,
+            'saml2_get_is_allow_update': saml2_get_is_allow_update
         }
 
     def get_actions(self):
@@ -691,7 +695,3 @@ class Saml2Controller(UserController):
     def staff_login(self):
         """Default login page for staff members."""
         return self.login()
-
-    def edit(self, id=None, data=None, errors=None, error_summary=None):
-        saml2_set_context_variables_after_check_for_user_update(id)
-        return super(Saml2Controller, self).edit(id, data, errors, error_summary)
