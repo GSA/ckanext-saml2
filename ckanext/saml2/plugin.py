@@ -324,7 +324,7 @@ class Saml2Plugin(p.SingletonPlugin):
         try:
             # Update the user account from the authentication response
             # every time
-            c.userobj = self._create_or_update_user(c.user, saml_info)
+            c.userobj = self._create_or_update_user(c.user, saml_info, name_id)
             c.user = c.userobj.name
         except Exception as e:
             log.error(
@@ -392,7 +392,7 @@ class Saml2Plugin(p.SingletonPlugin):
             redirect_after_login = config.get('saml2.redirect_after_login', '/dashboard')
             h.redirect_to(redirect_after_login)
 
-    def _create_or_update_user(self, user_name, saml_info):
+    def _create_or_update_user(self, user_name, saml_info, name_id):
         """Create or update the subject's user account and return the user
         object"""
         data_dict = {}
@@ -429,7 +429,10 @@ class Saml2Plugin(p.SingletonPlugin):
         if is_new_user:
             email = _take_from_saml_or_user('email', saml_info, data_dict)
             new_user_username = _get_random_username_from_email(email)
-            name_id = _take_from_saml_or_user('id', saml_info, data_dict)
+
+            name_id_from_saml2_NameID = config.get('saml2.name_id_from_saml2_NameID', False)
+            if not name_id_from_saml2_NameID:
+                name_id = _take_from_saml_or_user('id', saml_info, data_dict)
             data_dict['name'] = new_user_username
             data_dict['id'] = unicode(uuid.uuid4())
             log.debug("Creating user: %s", data_dict)
