@@ -68,6 +68,11 @@ saml2.create_missing_orgs = True
 saml2.rvm_users_from_orgs = false
 ```
 
+- By default, `name_id` taken from the `id` field that set in mapping for User. In order to take `name_id` from the SAML2 response NameID field, you need to set `saml2saml2.name_id_from_saml2_NameID` to `true`. By default its `false`.
+```
+saml2.name_id_from_saml2_NameID = true
+```
+
 - When User logins, ckanext-saml2 tries to create/update Organization Membership for him. This option allow to avoid Orgnization Membership create/update stage. By default it set to `False`.
 ```
 saml2.disable_organization_membership = True
