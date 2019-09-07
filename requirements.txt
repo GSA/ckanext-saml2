@@ -1,1 +1,1 @@
--e git+https://github.com/GSA/pysaml2.git@max#egg=pysaml2
+-e git+https://github.com/GSA/pysaml2.git@datagov/max-bionic#egg=pysaml2
