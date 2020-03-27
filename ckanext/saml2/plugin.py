@@ -557,6 +557,12 @@ class Saml2Plugin(p.SingletonPlugin):
         We can be here either because we are requesting a login (no user)
         or we have just been logged in.
         """
+
+        if not p.toolkit.c.user:
+            # A 401 HTTP Status will cause the login to be triggered
+            return base.abort(401, p.toolkit._('Login required!'))
+        h.redirect_to('/')
+
         c = p.toolkit.c
         if not c.user:
             try:
