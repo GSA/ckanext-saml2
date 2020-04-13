@@ -2,6 +2,10 @@ ckanext-saml2
 ==============
 An extension to enable Single Sign On(SSO) for CKAN data portals via SAML2 Authentication.
 
+`datagov/v0.4.0` is the branch currently used in production at data.gov. It is a fork of https://github.com/DataShades/ckanext-saml2 and contains necessary changes for compatibility with the Max.gov idp.
+
+New releases of the default branch of the upstream repository should be evaluated for inclusion via rebase.
+
 #### Requirements
 The following packages are required: memcached, repoze, m2crypto, xmlsec1, xmlsec1-openssl, swig
 
