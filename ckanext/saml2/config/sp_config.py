@@ -5,8 +5,6 @@ from pylons import config
 from saml2 import BINDING_HTTP_REDIRECT
 from saml2.saml import NAME_FORMAT_URI
 
-print('hello sp_config')
-
 saml2_site_url = 'localhost:8080'
 saml2_idp_url = 'https://login.test.max.gov'
 
