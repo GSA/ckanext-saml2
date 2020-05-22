@@ -74,7 +74,7 @@ if days_till_expiry <= 4:
     # currently doesn't support, forcing pysaml2 to use the Redirect
     # binding
     for idpsso in metadata.findall('./md:IDPSSODescriptor', NS):
-        for element in idpsso.findall('./md:SingleLogoutService[@Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"]', NS):
+        for element in idpsso.findall('./md:SingleLogoutService[@Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-REDIRECT"]', NS):
             #print ET.tostring(element)
             idpsso.remove(element)
             #print "Removed IdP POST binding SLO config"
