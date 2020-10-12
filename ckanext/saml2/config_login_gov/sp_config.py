@@ -24,6 +24,7 @@ CONFIG = {
             'allow_unsolicited': True,
             'optional_attributes': [],
             'idp': [idp_url],
+            'want_response_signed': False
         }
     },
     'debug': 0,
