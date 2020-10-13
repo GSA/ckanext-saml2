@@ -27,7 +27,7 @@ CONFIG = {
             'want_response_signed': False
         }
     },
-    'debug': 0,
+    'debug': 1,
     'key_file': config_path + '/pki/mykey.pem',
     'cert_file': config_path + '/pki/mycert.pem',
     'attribute_map_dir': config_path + '/attributemaps',
@@ -42,5 +42,32 @@ CONFIG = {
             'backupCount': 5,
             },
         'loglevel': 'error',
+    },
+    "logging": {
+        "version": 1,
+        "formatters": {
+            "simple": {
+                "format": "[%(asctime)s] [%(levelname)s] [%(name)s.%(funcName)s] %(message)s",
+            },
+        },
+        "handlers": {
+          "stdout": {
+              "class": "logging.StreamHandler",
+              "stream": "ext://sys.stdout",
+              "level": "DEBUG",
+              "formatter": "simple",
+          },
+        },
+        "loggers": {
+            "saml2": {
+                "level": "DEBUG"
+            },
+        },
+        "root": {
+            "level": "DEBUG",
+            "handlers": [
+                "stdout",
+            ],
+        },
     }
 }
