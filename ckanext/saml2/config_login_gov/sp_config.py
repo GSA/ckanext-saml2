@@ -72,3 +72,7 @@ CONFIG = {
         },
     }
 }
+
+def generate_cert_func():
+    
+    return (cert_str, req_key_str)
