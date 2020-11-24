@@ -607,7 +607,7 @@ class Saml2Plugin(p.SingletonPlugin):
         rem = environ['repoze.who.plugins'][client.rememberer_name]
         rem.forget(environ, subject_id)
         # MAX does not support slo, let us fake one.
-        h.redirect_to('/slo?SAMLResponse=1')
+        return h.redirect_to('/slo?SAMLResponse=1')
 
     def abort(self, status_code, detail, headers, comment):
         """
@@ -690,7 +690,7 @@ class Saml2Controller(UserController):
              #       pass
 
                 delete_cookies()
-                h.redirect_to(controller='user', action='logged_out')
+                return h.redirect_to(controller='user', action='logged_out')
 
     def staff_login(self):
         """Default login page for staff members."""
