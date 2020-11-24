@@ -593,7 +593,7 @@ class Saml2Plugin(p.SingletonPlugin):
             domain = p.toolkit.request.environ['HTTP_HOST']
             base.response.delete_cookie(rememberer.cookie_name, domain='.' + domain)
             base.response.delete_cookie(rememberer.cookie_name)
-            h.redirect_to(controller='home', action='index')
+            return h.redirect_to(controller='home', action='index')
 
         subject_id = environ["repoze.who.identity"]['repoze.who.userid']
         name_id = unserialise_nameid(subject_id)
@@ -607,6 +607,7 @@ class Saml2Plugin(p.SingletonPlugin):
                                                    expire=None, sign=True,
                                                    expected_binding=BINDING_HTTP_REDIRECT,
                                                    sign_alg="rsa-sha256", digest_alg="hmac-sha256")
+        log.debug('logout: saml_logout=%r' % saml_logout)
 
         rem = environ['repoze.who.plugins'][client.rememberer_name]
         rem.forget(environ, subject_id)
@@ -616,7 +617,8 @@ class Saml2Plugin(p.SingletonPlugin):
         for key in saml_logout.keys():
             location = saml_logout[key][1]['headers'][0][1]
             log.debug("IdP logout URL = {0}".format(location))
-            h.redirect_to(location)
+            # TODO probably shouldn't return on the first key
+            return h.redirect_to(location)
 
     def abort(self, status_code, detail, headers, comment):
         """
@@ -699,7 +701,7 @@ class Saml2Controller(UserController):
              #       pass
 
                 delete_cookies()
-                h.redirect_to(controller='user', action='logged_out')
+                return h.redirect_to(controller='user', action='logged_out')
 
     def staff_login(self):
         """Default login page for staff members."""
