@@ -304,21 +304,28 @@ class Saml2Plugin(p.SingletonPlugin):
         log.debug('NameId: %s' % (name_id))
 
         saml2_user_info = saml2_get_user_info(name_id)
+        log.debug("saml2_user_info = %r", saml2_user_info)
+        
         if saml2_user_info is not None:
             c.user = saml2_user_info[1].name
 
+        log.debug("identify(): c.user = %r", c.user)
         log.debug("repoze.who.identity = {0}".format(dict(environ["repoze.who.identity"])))
 
         # get the actual user info from the saml2auth client
         try:
             saml_info = environ["repoze.who.identity"]["user"]
-
+            log.debug("identify(): saml_info = %r", saml_info)
+            
         except KeyError:
             # This is a request in an existing session so no need to provision
             # an account, set c.userobj and return
             c.userobj = model.User.get(c.user)
             if c.userobj is not None:
-                c.user = saml_info['maxemail'][0]
+                c.user = saml_info['maxemail'][0] # REMIND: this looks suspect
+
+            log.debug("identify(): KeyError; saml_info = %r", saml_info)
+
             return
 
         try:
@@ -327,9 +334,8 @@ class Saml2Plugin(p.SingletonPlugin):
             c.userobj = self._create_or_update_user(c.user, saml_info, name_id)
             c.user = c.userobj.name
         except Exception as e:
-            log.error(
+            log.exception(
                 "Couldn't create or update user account ID:%s", c.user)
-            log.error("Error %s", e)
             c.user = None
             return
 
@@ -601,7 +607,7 @@ class Saml2Plugin(p.SingletonPlugin):
         rem = environ['repoze.who.plugins'][client.rememberer_name]
         rem.forget(environ, subject_id)
         # MAX does not support slo, let us fake one.
-        h.redirect_to('/slo?SAMLResponse=1')
+        return h.redirect_to('/slo?SAMLResponse=1')
 
     def abort(self, status_code, detail, headers, comment):
         """
@@ -684,7 +690,7 @@ class Saml2Controller(UserController):
              #       pass
 
                 delete_cookies()
-                h.redirect_to(controller='user', action='logged_out')
+                return h.redirect_to(controller='user', action='logged_out')
 
     def staff_login(self):
         """Default login page for staff members."""
