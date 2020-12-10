@@ -42,7 +42,7 @@ CONFIG = {
             'maxBytes': 100000,
             'backupCount': 5,
             },
-        'loglevel': 'error',
+        'loglevel': 'debug',
     },
     "logging": {
         "version": 1,
