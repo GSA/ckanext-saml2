@@ -407,9 +407,15 @@ class Saml2Plugin(p.SingletonPlugin):
         is_new_user = False
         userobj = model.User.get(user_name)
         if userobj is None:
-            is_new_user = True
-            user_schema = schema.default_user_schema()
-        else:
+            email = _take_from_saml_or_user('email', saml_info, data_dict)
+            userobjs = model.User.by_email(email)
+            if len(userobjs) == 1:
+               userobj = userobjs[0] 
+            if userobj is None:
+                is_new_user = True
+                user_schema = schema.default_user_schema()
+
+        if userobj:
             if userobj.is_deleted():
                 # If account exists and is deleted, reactivate it. Assumes
                 # only the IAM driving the IdP will deprovision user
@@ -433,8 +439,10 @@ class Saml2Plugin(p.SingletonPlugin):
         user_schema['name'] = [p.toolkit.get_validator('not_empty')]
         context = {'schema': user_schema, 'ignore_auth': True}
         if is_new_user:
-            email = _take_from_saml_or_user('email', saml_info, data_dict)
-            new_user_username = email
+            if  p.toolkit.asbool(config.get('saml2.create_random_user_name_from_email', 'false')):
+                new_user_username = _get_random_username_from_email(email)
+            else:
+                new_user_username = email
 
             name_id_from_saml2_NameID = config.get('saml2.name_id_from_saml2_NameID', False)
             if not name_id_from_saml2_NameID:

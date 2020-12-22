@@ -87,6 +87,14 @@ saml2.disable_organization_membership = True
 saml2.redirect_after_login = '/'
 ```
 
+- When a new User is created the email will be used as _name_. 
+If you prefer to create a unique user name you can create a new user name
+For example `jhon.smith@email.com` will be converted to something like `jhon-smith-91`
+```
+saml2.create_random_user_name_from_email = false
+```
+
+
 - The SP initiates SLO on CKAN logout by default. In order to make this more prominent you can add the directive `saml2.sp_initiates_slo` in ckan configuration file. Values `true`, `yes`, `on`, `y`, `t`, `1` are treated as true. To disable SP-initiated SLO and only logout from CKAN, set this directive to `false`, `no`, `off`, `n`, `f`, or `0`.
 ```
 saml2.sp_initiates_slo = true
