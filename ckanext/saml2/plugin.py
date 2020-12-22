@@ -395,8 +395,10 @@ class Saml2Plugin(p.SingletonPlugin):
                 if came_from:
                     h.redirect_to(h.url_for(came_from))
 
-            redirect_after_login = config.get('saml2.redirect_after_login', '/dashboard')
-            h.redirect_to(redirect_after_login)
+            # TODO CKAN identify user in all requests. Discover why this is here
+            if '/login' in request.url:
+                redirect_after_login = config.get('saml2.redirect_after_login', '/dashboard')
+                h.redirect_to(redirect_after_login)
 
     def _create_or_update_user(self, user_name, saml_info, name_id):
         """Create or update the subject's user account and return the user
