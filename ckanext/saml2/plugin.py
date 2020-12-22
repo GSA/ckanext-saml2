@@ -434,7 +434,7 @@ class Saml2Plugin(p.SingletonPlugin):
         context = {'schema': user_schema, 'ignore_auth': True}
         if is_new_user:
             email = _take_from_saml_or_user('email', saml_info, data_dict)
-            new_user_username = _get_random_username_from_email(email)
+            new_user_username = email
 
             name_id_from_saml2_NameID = config.get('saml2.name_id_from_saml2_NameID', False)
             if not name_id_from_saml2_NameID:
