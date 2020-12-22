@@ -1,0 +1,45 @@
+version: 2
+jobs:
+  lint:
+    docker:
+      - image: circleci/python:2.7.18
+    steps:
+      - checkout
+      - run:
+          name: lint code
+          command: make lint
+  
+  build_catalog:
+    working_directory: ~/ckanext-saml2
+    machine:
+      image: circleci/classic:201708-01
+    steps:
+      - checkout
+      - run:
+          name: build and test catalog
+          command: bin/build-catalog.bash
+      
+  build_inventory:
+    working_directory: ~/ckanext-saml2
+    machine:
+      image: circleci/classic:201708-01
+    steps:
+      - checkout
+      - run:
+          name: build
+          command: bin/build-inventory.bash
+      - run:
+          name: test
+          command: bin/test-inventory.sh
+
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - lint
+      - build_inventory:
+          requires:
+              - lint
+      - build_catalog:
+          requires:
+            - lint
